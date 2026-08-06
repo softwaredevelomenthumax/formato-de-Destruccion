@@ -1,0 +1,23 @@
+import { Outlet, Navigate } from "react-router";
+import { Sidebar } from "./Sidebar";
+import { Header } from "./Header";
+import { useAuth } from "../../context/AuthContext";
+import { Toaster } from "sonner";
+
+export function AppLayout() {
+  const { isAuthenticated } = useAuth();
+  if (!isAuthenticated) return <Navigate to="/login" replace />;
+
+  return (
+    <div className="flex h-screen bg-slate-50 overflow-hidden">
+      <Sidebar />
+      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+        <Header />
+        <main className="flex-1 overflow-y-auto p-6">
+          <Outlet />
+        </main>
+      </div>
+      <Toaster position="top-right" richColors />
+    </div>
+  );
+}

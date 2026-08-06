@@ -1,0 +1,10 @@
+{
+  "description": "Access real-time updates and detailed information tailored for users seeking accurate and timely data, enhancing decision-making and awareness.",
+  "robots": {
+    "index": false
+  },
+  "accessibility": {
+    "addBypassLinks": false,
+    "ignoreReducedMotion": false
+  }
+}
