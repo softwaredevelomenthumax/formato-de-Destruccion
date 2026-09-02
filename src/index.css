@@ -29,6 +29,8 @@
 
 html, body, #root {
   height: 100%;
+  margin: 0;
+  overflow: hidden;
 }
 
 body {
@@ -37,6 +39,7 @@ body {
   color: #0F172A;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  overflow: hidden;
 }
 
 html.dark body {
@@ -101,6 +104,66 @@ html.dark .bg-slate-50 {
 
 html.dark .bg-slate-100 {
   background-color: #1E293B;
+}
+
+html.dark .bg-blue-50 {
+  background-color: #172554;
+}
+
+html.dark .bg-green-50 {
+  background-color: #052E16;
+}
+
+html.dark .bg-amber-50 {
+  background-color: #451A03;
+}
+
+html.dark .bg-red-50 {
+  background-color: #450A0A;
+}
+
+html.dark .bg-sky-50 {
+  background-color: #082F49;
+}
+
+html.dark .text-blue-700 {
+  color: #93C5FD;
+}
+
+html.dark .text-green-700 {
+  color: #86EFAC;
+}
+
+html.dark .text-amber-700 {
+  color: #FCD34D;
+}
+
+html.dark .text-red-700 {
+  color: #FCA5A5;
+}
+
+html.dark .text-sky-700 {
+  color: #7DD3FC;
+}
+
+html.dark .border-blue-200 {
+  border-color: #1D4ED8;
+}
+
+html.dark .border-green-200 {
+  border-color: #166534;
+}
+
+html.dark .border-amber-200 {
+  border-color: #92400E;
+}
+
+html.dark .border-red-200 {
+  border-color: #991B1B;
+}
+
+html.dark .border-sky-200 {
+  border-color: #0369A1;
 }
 
 html.dark .border-slate-200 {

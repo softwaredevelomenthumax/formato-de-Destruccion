@@ -2,8 +2,6 @@ import { RouterProvider } from "react-router";
 import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { router } from "./routes";
-import { AuthProvider } from "./context/AuthContext";
-import { AppProvider } from "./context/AppContext";
 import logoa from "./assets/logoa.png";
 
 const THEME_KEY = "add-theme";
@@ -13,15 +11,19 @@ export default function App() {
   const isLoginRoute = typeof window !== "undefined" && window.location.pathname === "/login";
 
   useEffect(() => {
-    const stored = localStorage.getItem(THEME_KEY);
-    const theme =
-      stored === "light" || stored === "dark"
-        ? stored
-        : window.matchMedia("(prefers-color-scheme: dark)").matches
-          ? "dark"
-          : "light";
+    try {
+      const stored = localStorage.getItem(THEME_KEY);
+      const theme =
+        stored === "light" || stored === "dark"
+          ? stored
+          : typeof window.matchMedia === "function" && window.matchMedia("(prefers-color-scheme: dark)").matches
+            ? "dark"
+            : "light";
 
-    document.documentElement.classList.toggle("dark", theme === "dark");
+      document.documentElement.classList.toggle("dark", theme === "dark");
+    } catch {
+      document.documentElement.classList.remove("dark");
+    }
   }, []);
 
   useEffect(() => {
@@ -31,15 +33,12 @@ export default function App() {
 
   return (
     <>
-      <AuthProvider>
-        <AppProvider>
-          <RouterProvider router={router} />
-        </AppProvider>
-      </AuthProvider>
+      <RouterProvider router={router} />
 
-      <AnimatePresence>
+      <AnimatePresence mode="wait">
         {showSplash && (
           <motion.div
+            key="app-splash"
             className="fixed inset-0 z-[9999] flex items-center justify-center overflow-hidden bg-white"
             initial={{ opacity: 1 }}
             exit={{ opacity: 0, transition: { duration: 0.75, ease: "easeInOut" } }}
@@ -54,9 +53,9 @@ export default function App() {
                 className="relative z-10 flex flex-col items-center"
                 initial={{ scale: 0.35, opacity: 0, y: 24 }}
                 animate={{
-                  scale: [0.35, 1.12, 1, 1.03, 1, 0.46],
+                  scale: [0.35, 1.12, 1, 1.03, 1, 0.48],
                   opacity: [0, 1, 1, 1, 1, 1],
-                  y: [24, 0, -8, 0, -4, -350],
+                  y: [24, 0, -8, 0, -4, -240],
                 }}
                 transition={{ duration: 2.9, times: [0, 0.22, 0.42, 0.62, 0.82, 1], ease: "easeInOut" }}
               >
@@ -136,11 +135,6 @@ export default function App() {
               transition={{ duration: 1.2, ease: "easeInOut", delay: 0.5 }}
             />
 
-            {isLoginRoute && (
-              <p className="absolute inset-x-0 bottom-8 z-10 mx-auto w-fit rounded-full border border-blue-200/80 bg-blue-50/85 px-4 py-1.5 text-center text-xs font-semibold text-blue-700 shadow-sm backdrop-blur-sm">
-                Humax Pharmaceutical, filial de Bausch Health Companies Inc.
-              </p>
-            )}
           </motion.div>
         )}
       </AnimatePresence>

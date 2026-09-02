@@ -533,5 +533,6 @@ export function generateConsecutivo(existing: Acta[]): string {
     .filter((a) => a.consecutivo.startsWith(`ADD-${year}`))
     .map((a) => parseInt(a.consecutivo.split("-")[2] || "0"))
     .reduce((a, b) => Math.max(a, b), 0);
+
   return `ADD-${year}-${String(max + 1).padStart(3, "0")}`;
 }

@@ -140,9 +140,6 @@ export default function DashboardPage() {
             <h1 className="text-xl font-bold text-slate-900">Mis Actas de Destrucción</h1>
             <p className="text-sm text-slate-500 mt-0.5">Bienvenido, {user.nombre}</p>
           </div>
-          <button onClick={() => navigate("/actas/nueva")} className="bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-800 transition-colors">
-            + Nueva Acta
-          </button>
         </div>
 
         {devueltas > 0 && (
@@ -199,10 +196,10 @@ export default function DashboardPage() {
   });
 
   const myApproved = actas.filter((a) =>
-    a.aprobaciones.some((ap) => ap.aprobador === user.username && ap.status === "aprobado")
+    a.aprobaciones?.some((ap) => ap.aprobador === user.username && ap.status === "aprobado") ?? false
   );
   const myRejected = actas.filter((a) =>
-    a.aprobaciones.some((ap) => ap.aprobador === user.username && ap.status === "rechazado")
+    a.aprobaciones?.some((ap) => ap.aprobador === user.username && ap.status === "rechazado") ?? false
   );
 
   return (

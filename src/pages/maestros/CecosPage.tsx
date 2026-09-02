@@ -1,26 +1,41 @@
-import { useState, useMemo } from "react";
-import { Building2, Search, Plus, Edit2, Trash2 } from "lucide-react";
-import { CECOS_DATA } from "../../data/cecos";
+import { useState, useMemo, useEffect } from "react";
+import { Navigate } from "react-router";
+import { Building2, Search, Plus, Edit2, Trash2, ChevronLeft, ChevronRight } from "lucide-react";
 import { Modal, ConfirmModal } from "../../components/ui/Modal";
 import { EmptyState } from "../../components/ui/EmptyState";
 import { Badge } from "../../components/ui/Badge";
 import { EMPRESAS } from "../../constants";
 import type { Ceco, Empresa } from "../../types";
 import { toast } from "sonner";
+import { useAuth } from "../../context/AuthContext";
+import { api } from "../../services/api.ts";
+
+const EMPRESA_CODES: Record<Empresa, string> = { Humax: "CO11", Farmatech: "CO12", Cambridge: "CO13" };
 
 export default function CecosPage() {
-  const [cecos, setCecos] = useState<Ceco[]>(CECOS_DATA);
+  const { user } = useAuth();
+  const [cecos, setCecos] = useState<Ceco[]>([]);
   const [search, setSearch] = useState("");
   const [empresaFilter, setEmpresaFilter] = useState<Empresa | "">("");
   const [page, setPage] = useState(1);
   const [modalOpen, setModalOpen] = useState(false);
   const [editItem, setEditItem] = useState<Ceco | null>(null);
-  const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<Ceco | null>(null);
   const PAGE_SIZE = 15;
 
   const [form, setForm] = useState<Ceco>({
     empresaCode: "CO11", empresa: "Humax", ceco: "", denominacion: "", responsable: "", departamento: "", tipoCosto: "F - Production", moneda: "COP", status: "Activo"
   });
+
+  useEffect(() => {
+    api.getCecos().then((data: unknown) => {
+      if (Array.isArray(data) && data.length > 0) setCecos(data);
+    }).catch(() => {
+      toast.error("No se pudo cargar el maestro de CeCos desde la base de datos");
+    });
+  }, []);
+
+  if (user?.rol !== "costos") return <Navigate to="/dashboard" replace />;
 
   const filtered = useMemo(() => {
     let list = cecos;
@@ -39,6 +54,13 @@ export default function CecosPage() {
 
   const totalPages = Math.ceil(filtered.length / PAGE_SIZE);
   const pageItems = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  const firstVisible = filtered.length === 0 ? 0 : (page - 1) * PAGE_SIZE + 1;
+  const lastVisible = Math.min(page * PAGE_SIZE, filtered.length);
+
+  useEffect(() => {
+    const lastPage = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+    if (page > lastPage) setPage(lastPage);
+  }, [filtered.length, page]);
 
   const openCreate = () => {
     setEditItem(null);
@@ -52,22 +74,36 @@ export default function CecosPage() {
     setModalOpen(true);
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!form.ceco || !form.denominacion || !form.empresa) { toast.error("Complete los campos obligatorios"); return; }
-    if (editItem) {
-      setCecos((prev) => prev.map((c) => c.ceco === editItem.ceco && c.empresa === editItem.empresa ? form : c));
-      toast.success("CeCo actualizado");
-    } else {
-      setCecos((prev) => [...prev, form]);
-      toast.success("CeCo creado");
+    try {
+      const data = { ...form, empresaCode: EMPRESA_CODES[form.empresa] };
+      if (editItem) {
+        if (!editItem.id) throw new Error("El CeCo no tiene un id de base de datos");
+        await api.updateCeco(editItem.id, data);
+        setCecos((prev) => prev.map((c) => c.ceco === editItem.ceco && c.empresaCode === editItem.empresaCode ? data : c));
+        toast.success("CeCo actualizado");
+      } else {
+        const created = await api.createCeco(data);
+        setCecos((prev) => [...prev, created]);
+        toast.success("CeCo creado");
+      }
+      setModalOpen(false);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "No se pudo guardar el CeCo");
     }
-    setModalOpen(false);
   };
 
-  const handleDelete = (ceco: Ceco) => {
-    setCecos((prev) => prev.filter((c) => !(c.ceco === ceco.ceco && c.empresa === ceco.empresa)));
-    toast.success("CeCo eliminado");
-    setDeleteConfirm(null);
+  const handleDelete = async (ceco: Ceco) => {
+    try {
+      if (!ceco.id) throw new Error("El CeCo no tiene un id de base de datos");
+      await api.deleteCeco(ceco.id);
+      setCecos((prev) => prev.filter((c) => !(c.ceco === ceco.ceco && c.empresaCode === ceco.empresaCode)));
+      toast.success("CeCo eliminado");
+      setDeleteConfirm(null);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "No se pudo eliminar el CeCo");
+    }
   };
 
   return (
@@ -112,8 +148,8 @@ export default function CecosPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {pageItems.map((c, i) => (
-                  <tr key={i} className="hover:bg-slate-50">
+                {pageItems.map((c) => (
+                  <tr key={c.id || `${c.empresaCode}-${c.ceco}`} className="hover:bg-slate-50">
                     <td className="px-4 py-2.5 text-slate-600 text-xs font-medium">{c.empresa}</td>
                     <td className="px-4 py-2.5 font-mono text-xs text-blue-700 font-semibold">{c.ceco}</td>
                     <td className="px-4 py-2.5 font-medium text-slate-800">{c.denominacion}</td>
@@ -125,7 +161,7 @@ export default function CecosPage() {
                     <td className="px-4 py-2.5">
                       <div className="flex gap-1 justify-end">
                         <button onClick={() => openEdit(c)} className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded"><Edit2 size={14} /></button>
-                        <button onClick={() => setDeleteConfirm(`${c.empresa}-${c.ceco}`)} className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded"><Trash2 size={14} /></button>
+                        <button onClick={() => setDeleteConfirm(c)} className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded"><Trash2 size={14} /></button>
                       </div>
                     </td>
                   </tr>
@@ -136,12 +172,31 @@ export default function CecosPage() {
         )}
 
         {totalPages > 1 && (
-          <div className="flex items-center justify-between px-4 py-3 border-t border-slate-200">
-            <p className="text-xs text-slate-500">Página {page} de {totalPages}</p>
-            <div className="flex gap-1">
-              {Array.from({ length: Math.min(totalPages, 8) }, (_, i) => i + 1).map((p) => (
-                <button key={p} onClick={() => setPage(p)} className={`w-7 h-7 rounded text-xs font-medium ${p === page ? "bg-blue-700 text-white" : "text-slate-600 hover:bg-slate-100"}`}>{p}</button>
-              ))}
+          <div className="flex items-center justify-between gap-4 px-4 py-3 border-t border-slate-200">
+            <p className="text-xs text-slate-500">
+              Mostrando {firstVisible}-{lastVisible} de {filtered.length} registros · Página {page} de {totalPages}
+            </p>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setPage((current) => Math.max(1, current - 1))}
+                disabled={page === 1}
+                aria-label="Página anterior"
+                title="Página anterior"
+                className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <ChevronLeft size={16} />
+              </button>
+              <button
+                type="button"
+                onClick={() => setPage((current) => Math.min(totalPages, current + 1))}
+                disabled={page === totalPages}
+                aria-label="Página siguiente"
+                title="Página siguiente"
+                className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <ChevronRight size={16} />
+              </button>
             </div>
           </div>
         )}
@@ -164,7 +219,7 @@ export default function CecosPage() {
           </div>
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">Código CeCo *</label>
-            <input value={form.ceco} onChange={(e) => setForm((p) => ({ ...p, ceco: e.target.value }))} disabled={!!editItem} className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-50" />
+            <input value={form.ceco} onChange={(e) => setForm((p) => ({ ...p, ceco: e.target.value }))} disabled={!!editItem} className="w-full px-3 py-2 text-sm border border-blue-200 rounded-lg bg-blue-50 text-blue-800 font-medium cursor-not-allowed pointer-events-none focus:outline-none" />
           </div>
           <div className="col-span-2">
             <label className="block text-sm font-medium text-slate-700 mb-1">Denominación *</label>
@@ -196,11 +251,7 @@ export default function CecosPage() {
       <ConfirmModal
         open={!!deleteConfirm}
         onClose={() => setDeleteConfirm(null)}
-        onConfirm={() => {
-          const [emp, ceco] = (deleteConfirm || "").split("-");
-          const item = cecos.find((c) => c.empresa === emp && c.ceco === ceco);
-          if (item) handleDelete(item);
-        }}
+        onConfirm={() => { if (deleteConfirm) handleDelete(deleteConfirm); }}
         title="Eliminar CeCo"
         message="¿Está seguro de que desea eliminar este centro de costos?"
         confirmLabel="Eliminar" danger

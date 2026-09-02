@@ -1,11 +1,11 @@
-import { useState, useCallback, type ReactNode } from "react";
-import { useNavigate } from "react-router";
+import { useState, useCallback, useEffect, useRef, type ReactNode } from "react";
+import { useNavigate, useParams } from "react-router";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import {
   Calendar, Package, AlertTriangle, CheckCircle2, Info, Upload, X,
-  Trash2, RotateCcw, Zap, ShieldOff, Wrench, HelpCircle
+  Trash2, RotateCcw, Zap, ShieldOff, Wrench, HelpCircle, Search
 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import { useApp } from "../../context/AppContext";
@@ -14,9 +14,11 @@ import { Modal } from "../../components/ui/Modal";
 import {
   CLASIFICACION_LABELS, CAUSAL_LABELS, CAUSAL_DESCRIPTIONS, EMPRESAS, AREAS
 } from "../../constants";
-import type { ClasificacionMaterial, CausalDestruccion, Empresa } from "../../types";
-import { CECOS_DATA } from "../../data/cecos";
+import type { CausalDestruccion, Ceco, Empresa } from "../../types";
+import { api } from "../../services/api.ts";
 import { toast } from "sonner";
+
+const ACTA_DRAFT_STORAGE_KEY = "humax-acta-draft";
 
 const STEPS = [
   { label: "Info General" },
@@ -38,38 +40,238 @@ const CAUSAL_ICONS: Record<CausalDestruccion, ReactNode> = {
   otras: <HelpCircle size={24} />,
 };
 
+const requiredString = (field: string) =>
+  z.any().refine((value) => typeof value === "string" && value.trim().length > 0, {
+    message: `${field} es obligatorio`,
+  });
+
+const dateStringSchema = z
+  .any()
+  .refine((value) => typeof value === "string" && value.trim().length > 0, {
+    message: "La fecha es obligatoria",
+  })
+  .refine((value) => typeof value !== "string" || /^\d{4}-\d{2}-\d{2}$/.test(value), {
+    message: "La fecha debe tener el formato DD/MM/YYYY",
+  });
+
+const clampDatePart = (value: string, max: number) => {
+  if (!value) return "";
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return "";
+  return String(Math.min(Math.max(numeric, 1), max)).padStart(2, "0");
+};
+
+const formatDateDisplay = (value?: string) => {
+  if (!value) return "";
+
+  if (value.includes("-")) {
+    const [year, month, day] = value.split("-");
+    if (year && month && day) return `${day}/${month}/${year}`;
+  }
+
+  const raw = value.replace(/\D/g, "").slice(0, 8);
+  if (!raw) return "";
+  if (raw.length <= 2) return raw;
+  if (raw.length <= 4) return `${raw.slice(0, 2)}/${raw.slice(2)}`;
+  if (raw.length <= 6) return `${raw.slice(0, 2)}/${raw.slice(2, 4)}/${raw.slice(4)}`;
+  return `${raw.slice(0, 2)}/${raw.slice(2, 4)}/${raw.slice(4, 8)}`;
+};
+
+const toIsoDate = (value?: string) => {
+  const raw = (value || "").replace(/\D/g, "").slice(0, 8);
+  if (raw.length !== 8) return raw;
+
+  const day = clampDatePart(raw.slice(0, 2), 31);
+  const month = clampDatePart(raw.slice(2, 4), 12);
+  const year = raw.slice(4, 8);
+
+  return `${year}-${month}-${day}`;
+};
+
+function DateField({
+  value,
+  onChange,
+  placeholder = "DD/MM/YYYY",
+  disabled = false,
+}: {
+  value?: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+  disabled?: boolean;
+}) {
+  const nativeInputRef = useRef<HTMLInputElement | null>(null);
+  const displayValue = formatDateDisplay(value || "");
+
+  const handleInput = (raw: string) => {
+    const digits = raw.replace(/\D/g, "").slice(0, 8);
+    if (!digits) {
+      onChange("");
+      return;
+    }
+
+    const day = digits.slice(0, 2);
+    const month = digits.slice(2, 4);
+    const year = digits.slice(4, 8);
+
+    const normalized = digits.length === 8
+      ? toIsoDate(`${day}${month}${year}`)
+      : `${day}${month ? `/${month}` : ""}${year ? `/${year}` : ""}`;
+
+    onChange(normalized);
+  };
+
+  return (
+    <div className="relative">
+      <input
+        type="text"
+        value={displayValue}
+        onChange={(e) => handleInput(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Tab" || e.key === "ArrowLeft" || e.key === "ArrowRight" || e.key === "Backspace" || e.key === "Delete") return;
+          if (!/[0-9]/.test(e.key)) e.preventDefault();
+        }}
+        onPaste={(e) => {
+          e.preventDefault();
+          const text = (e.clipboardData.getData("text") || "").replace(/\D/g, "").slice(0, 8);
+          handleInput(text);
+        }}
+        autoComplete="off"
+        inputMode="numeric"
+        placeholder={placeholder}
+        maxLength={10}
+        disabled={disabled}
+        className="w-full px-3 py-2.5 pr-10 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed"
+      />
+      <input
+        ref={nativeInputRef}
+        type="date"
+        value={value || ""}
+        onChange={(e) => onChange(e.target.value)}
+        tabIndex={-1}
+        aria-hidden="true"
+        className="absolute inset-0 opacity-0 pointer-events-none"
+      />
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() => nativeInputRef.current?.showPicker?.() || nativeInputRef.current?.click()}
+        className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 text-slate-500 hover:text-blue-600 transition-colors z-10 disabled:cursor-not-allowed disabled:opacity-50"
+        aria-label="Abrir calendario"
+      >
+        <Calendar size={16} />
+      </button>
+    </div>
+  );
+}
+
 const step1Schema = z.object({
   empresa: z.enum(["Humax", "Farmatech", "Cambridge"]),
-  centroCostos: z.string().min(1, "Seleccione un centro de costos"),
-  fecha: z.string().min(1, "La fecha es obligatoria"),
-  responsable: z.string().min(1, "El responsable es obligatorio"),
-  area: z.string().min(1, "El área es obligatoria"),
+  centroCostos: requiredString("Centro de costos").refine((value) => value.trim().length > 0, "Seleccione un centro de costos"),
+  fecha: dateStringSchema,
+  responsable: requiredString("Responsable"),
+  area: requiredString("Área"),
 });
 const step2Schema = z.object({
-  descripcion: z.string().min(3, "Descripción obligatoria"),
-  codigoSAP: z.string().min(1, "Código SAP obligatorio"),
-  numeroLote: z.string().min(1, "Número de lote obligatorio"),
-  ordenProduccion: z.string().min(1, "Orden de producción obligatoria"),
-  sustanciaControlada: z.boolean(),
+  descripcion: z.string().min(3, "Debe tener mínimo 3 caracteres"),
+  codigoSAP: requiredString("Código SAP"),
+  numeroLote: requiredString("Número de lote"),
+  ordenProduccion: requiredString("Orden de producción"),
+  sustanciaControlada: z
+    .any()
+    .refine((value) => value === true || value === false, {
+      message: "Seleccione si o no",
+    }),
   clasificacion: z.enum(["materia_prima", "producto_semiterminado", "granel", "producto_terminado", "material_empaque", "reactivos", "remanentes", "muestras", "otro"] as const),
-  fechaVencimiento: z.string().min(1, "Fecha de vencimiento obligatoria"),
-  registroINVIMA: z.string().min(1, "Registro INVIMA obligatorio"),
+  fechaVencimiento: z
+    .any()
+    .refine((value) => typeof value === "string" && value.trim().length > 0, {
+      message: "Fecha de vencimiento obligatoria",
+    })
+    .refine((value) => typeof value !== "string" || /^\d{4}-\d{2}-\d{2}$/.test(value), {
+      message: "La fecha debe tener el formato DD/MM/YYYY",
+    }),
+  registroINVIMA: requiredString("Registro INVIMA"),
   otraClasificacion: z.string().optional(),
 });
+const numberField = (label: string, maxValue: number, integer = false) =>
+  z.any().superRefine((value, ctx) => {
+    if (value === "" || value === null || value === undefined) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `${label} es obligatorio`,
+      });
+      return;
+    }
+
+    const raw = String(value).trim();
+    const numericValue = Number(raw);
+
+    if (!raw || !Number.isFinite(numericValue)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `Ingrese un valor válido para ${label}`,
+      });
+      return;
+    }
+
+    if (numericValue <= 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `${label} debe ser mayor a 0`,
+      });
+      return;
+    }
+
+    if (integer && !Number.isInteger(numericValue)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `${label} debe ser un número entero`,
+      });
+      return;
+    }
+
+    if (numericValue > maxValue) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `${label} no puede exceder ${maxValue.toLocaleString("es-CO")}`,
+      });
+    }
+  });
+
 const step3Schema = z.object({
-  pesoKg: z.number().positive("El peso debe ser mayor a 0"),
-  cantidadUnidades: z.number().int().positive("La cantidad debe ser mayor a 0"),
-  costoDestruccion: z.number().positive("El costo debe ser mayor a 0"),
+  pesoKg: numberField("Peso", 10000000000000),
+  cantidadUnidades: numberField("Cantidad", 10000000000000, true),
+  costoDestruccion: numberField("Costo de destrucción", 10000000000000),
 });
 
 type Step1Data = z.infer<typeof step1Schema>;
 type Step2Data = z.infer<typeof step2Schema>;
 type Step3Data = z.infer<typeof step3Schema>;
 
+function FieldError({ message }: { message?: string | { message?: string } | unknown }) {
+  const text = typeof message === "string"
+    ? message
+    : typeof message === "object" && message !== null && "message" in message
+      ? String((message as { message?: string }).message ?? "")
+      : "";
+
+  if (!text) return null;
+
+  return (
+    <p className="mt-1 flex items-center gap-1.5 text-xs text-red-600">
+      <AlertTriangle size={12} className="shrink-0" />
+      <span>{text}</span>
+    </p>
+  );
+}
+
 export default function ActaCreatePage() {
   const { user } = useAuth();
-  const { createActa, sendActa, invimaProducts } = useApp();
+  const { id } = useParams();
+  const { actas, createActa, updateActa, sendActa, invimaProducts } = useApp();
   const navigate = useNavigate();
+  const editingActa = id ? actas.find((acta) => acta.id === id) : undefined;
+  const isEditing = !!editingActa;
 
   const [currentStep, setCurrentStep] = useState(0);
   const [completedSteps, setCompletedSteps] = useState<number[]>([]);
@@ -83,16 +285,176 @@ export default function ActaCreatePage() {
   const [selectedEmpresa, setSelectedEmpresa] = useState<Empresa>("Humax");
   const [invimaSearch, setInvimaSearch] = useState("");
   const [showInvimaDropdown, setShowInvimaDropdown] = useState(false);
+  const [cecos, setCecos] = useState<Ceco[]>([]);
+  const [cecoSearch, setCecoSearch] = useState("");
+  const [showCecoModal, setShowCecoModal] = useState(false);
+  const isAreaFixed = user?.rol === "solicitante" && !!user?.area;
+  const isGeneralInfoLocked = isEditing;
 
-  const form1 = useForm<Step1Data>({ resolver: zodResolver(step1Schema), defaultValues: { fecha: new Date().toISOString().split("T")[0], empresa: "Humax" } });
-  const form2 = useForm<Step2Data>({ resolver: zodResolver(step2Schema), defaultValues: { sustanciaControlada: false, clasificacion: "producto_terminado" } });
+  useEffect(() => {
+    api.getCecos().then((data: unknown) => {
+      if (Array.isArray(data)) setCecos(data as Ceco[]);
+    }).catch(() => {
+      toast.error("No se pudo cargar el maestro de CeCos");
+    });
+  }, []);
+
+  const form1 = useForm<Step1Data>({
+    resolver: zodResolver(step1Schema),
+    defaultValues: {
+      fecha: new Date().toISOString().split("T")[0],
+      empresa: "Humax",
+      area: user?.area || "",
+    },
+  });
+  const form2 = useForm<Step2Data>({ resolver: zodResolver(step2Schema), defaultValues: { clasificacion: "producto_terminado" } });
   const form3 = useForm<Step3Data>({
     resolver: zodResolver(step3Schema),
     defaultValues: { pesoKg: 0, cantidadUnidades: 0, costoDestruccion: 0 },
   });
 
+  const form1Values = form1.watch();
+  const form2Values = form2.watch();
+  const form3Values = form3.watch();
+
+  useEffect(() => {
+    if (user?.area) {
+      form1.setValue("area", user.area, { shouldValidate: true });
+    }
+  }, [user?.area, form1]);
+
+  useEffect(() => {
+    if (!editingActa) return;
+
+    form1.reset({
+      empresa: editingActa.empresa,
+      centroCostos: editingActa.centroCostos,
+      fecha: editingActa.fecha,
+      responsable: editingActa.responsable,
+      area: editingActa.area,
+    });
+    form2.reset({
+      descripcion: editingActa.descripcion,
+      codigoSAP: editingActa.codigoSAP,
+      numeroLote: editingActa.numeroLote,
+      ordenProduccion: editingActa.ordenProduccion,
+      sustanciaControlada: editingActa.sustanciaControlada,
+      clasificacion: editingActa.clasificacion,
+      fechaVencimiento: editingActa.fechaVencimiento,
+      registroINVIMA: editingActa.registroINVIMA,
+      otraClasificacion: undefined,
+    });
+    form3.reset({
+      pesoKg: editingActa.pesoKg,
+      cantidadUnidades: editingActa.cantidadUnidades,
+      costoDestruccion: editingActa.costoDestruccion,
+    });
+    setFormData({
+      ...editingActa,
+      otraClasificacion: undefined,
+    });
+    setSelectedEmpresa(editingActa.empresa);
+    setSelectedCausal(editingActa.causal);
+    setPendingCausal(editingActa.causal);
+    setOtraCausal(editingActa.otraCausal || "");
+    setObservaciones(editingActa.observaciones || "");
+    setAdjuntos(Array.isArray(editingActa.adjuntos) ? editingActa.adjuntos : []);
+    setCurrentStep(1);
+    setCompletedSteps([0]);
+    setInvimaSearch(editingActa.registroINVIMA);
+  }, [editingActa]);
+
+  useEffect(() => {
+    try {
+      const savedDraft = window.localStorage.getItem(ACTA_DRAFT_STORAGE_KEY);
+      if (!savedDraft) return;
+
+      const parsedDraft = JSON.parse(savedDraft) as {
+        currentStep?: number;
+        form1?: Partial<Step1Data>;
+        form2?: Partial<Step2Data>;
+        form3?: Partial<Step3Data>;
+        selectedCausal?: CausalDestruccion | null;
+        pendingCausal?: CausalDestruccion | null;
+        otraCausal?: string;
+        observaciones?: string;
+        adjuntos?: string[];
+        selectedEmpresa?: Empresa;
+      };
+
+      if (!parsedDraft) return;
+
+      form1.reset({ ...form1.getValues(), ...parsedDraft.form1 });
+      form2.reset({ ...form2.getValues(), ...parsedDraft.form2 });
+      form3.reset({ ...form3.getValues(), ...parsedDraft.form3 });
+      setCurrentStep(typeof parsedDraft.currentStep === "number" ? parsedDraft.currentStep : 0);
+      setSelectedCausal(parsedDraft.selectedCausal ?? null);
+      setPendingCausal(parsedDraft.pendingCausal ?? null);
+      setOtraCausal(parsedDraft.otraCausal ?? "");
+      setObservaciones(parsedDraft.observaciones ?? "");
+      setAdjuntos(parsedDraft.adjuntos ?? []);
+      setSelectedEmpresa(parsedDraft.selectedEmpresa ?? "Humax");
+    } catch {
+      // Ignorar errores de almacenamiento local
+    }
+  }, []);
+
+  useEffect(() => {
+    const persistDraft = () => {
+      try {
+        const payload = {
+          currentStep,
+          form1: form1Values,
+          form2: form2Values,
+          form3: form3Values,
+          selectedCausal,
+          pendingCausal,
+          otraCausal,
+          observaciones,
+          adjuntos,
+          selectedEmpresa,
+        };
+        window.localStorage.setItem(ACTA_DRAFT_STORAGE_KEY, JSON.stringify(payload));
+      } catch {
+        // Ignorar errores de almacenamiento local
+      }
+    };
+
+    persistDraft();
+
+    return () => {
+      const path = window.location.pathname;
+      if (path !== "/actas/nueva") {
+        window.localStorage.removeItem(ACTA_DRAFT_STORAGE_KEY);
+      }
+    };
+  }, [currentStep, form1Values, form2Values, form3Values, selectedCausal, pendingCausal, otraCausal, observaciones, adjuntos, selectedEmpresa]);
+
   const empresaWatch = form1.watch("empresa");
-  const cecosByEmpresa = CECOS_DATA.filter((c) => c.empresa === empresaWatch);
+  const centroCostosWatch = form1.watch("centroCostos");
+  const cecosByEmpresa = cecos.filter((c) => c.empresa === empresaWatch);
+  const filteredCecos = cecosByEmpresa.filter((c) => {
+    const query = cecoSearch.toLowerCase().trim();
+    if (!query) return true;
+    return [c.ceco, c.denominacion, c.responsable, c.departamento]
+      .some((value) => value.toLowerCase().includes(query));
+  });
+
+  const selectedCeco = cecos.find((c) =>
+    `${c.ceco} - ${c.denominacion}` === centroCostosWatch && c.empresa === empresaWatch
+  );
+
+  useEffect(() => {
+    if (centroCostosWatch && !cecosByEmpresa.some((c) => `${c.ceco} - ${c.denominacion}` === centroCostosWatch)) {
+      form1.setValue("centroCostos", "", { shouldValidate: true });
+    }
+  }, [empresaWatch, centroCostosWatch, cecosByEmpresa, form1]);
+
+  const selectCeco = (ceco: Ceco) => {
+    form1.setValue("centroCostos", `${ceco.ceco} - ${ceco.denominacion}`, { shouldValidate: true, shouldDirty: true });
+    setShowCecoModal(false);
+    setCecoSearch("");
+  };
 
   const filteredInvima = invimaProducts.filter((p) =>
     p.internalStatus === "Vigente" &&
@@ -109,8 +471,10 @@ export default function ActaCreatePage() {
   };
 
   const onStep1 = form1.handleSubmit((data) => {
-    setFormData((prev) => ({ ...prev, ...data }));
-    setSelectedEmpresa(data.empresa);
+    if (!isEditing) {
+      setFormData((prev) => ({ ...prev, ...data }));
+      setSelectedEmpresa(data.empresa);
+    }
     setCompletedSteps((prev) => [...new Set([...prev, 0])]);
     setCurrentStep(1);
   });
@@ -136,13 +500,37 @@ export default function ActaCreatePage() {
     setSelectedCausal(pendingCausal);
     setCompletedSteps((prev) => [...new Set([...prev, 3])]);
     setShowCausalModal(false);
-    setCurrentStep(4);
   };
 
-  const handleSaveDraft = () => {
+  const handleSaveDraft = async () => {
     if (!user || !selectedCausal) return;
-    const data = { ...formData } as any;
-    const acta = createActa({
+    try {
+      const data = { ...formData } as any;
+      if (editingActa) {
+        await updateActa(editingActa.id, {
+          descripcion: data.descripcion || "",
+          codigoSAP: data.codigoSAP || "",
+          numeroLote: data.numeroLote || "",
+          ordenProduccion: data.ordenProduccion || "",
+          sustanciaControlada: !!data.sustanciaControlada,
+          clasificacion: data.clasificacion || "otro",
+          fechaVencimiento: data.fechaVencimiento || "",
+          registroINVIMA: data.registroINVIMA || "",
+          pesoKg: data.pesoKg || 0,
+          cantidadUnidades: data.cantidadUnidades || 0,
+          costoDestruccion: data.costoDestruccion || 0,
+          causal: selectedCausal,
+          otraCausal: otraCausal || undefined,
+          observaciones,
+          adjuntos,
+          status: "borrador",
+        });
+        window.localStorage.removeItem(ACTA_DRAFT_STORAGE_KEY);
+        toast.success("Borrador actualizado correctamente");
+        navigate(`/actas/${editingActa.id}`);
+        return;
+      }
+      const acta = await createActa({
       status: "borrador",
       empresa: data.empresa || "Humax",
       centroCostos: data.centroCostos || "",
@@ -150,7 +538,7 @@ export default function ActaCreatePage() {
       solicitanteId: user.id,
       solicitanteNombre: user.nombre,
       responsable: data.responsable || "",
-      area: data.area || "",
+      area: isAreaFixed ? user.area : (data.area || ""),
       descripcion: data.descripcion || "",
       codigoSAP: data.codigoSAP || "",
       numeroLote: data.numeroLote || "",
@@ -166,15 +554,44 @@ export default function ActaCreatePage() {
       otraCausal: otraCausal || undefined,
       observaciones,
       adjuntos,
-    });
-    toast.success(`Borrador guardado: ${acta.consecutivo}`);
-    navigate("/actas");
+      });
+      window.localStorage.removeItem(ACTA_DRAFT_STORAGE_KEY);
+      toast.success(`Borrador guardado: ${acta.consecutivo}`);
+      navigate("/actas");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "No se pudo guardar el borrador");
+    }
   };
 
-  const handleSendApproval = () => {
+  const handleSendApproval = async () => {
     if (!user || !selectedCausal) return;
-    const data = { ...formData } as any;
-    const acta = createActa({
+    try {
+      const data = { ...formData } as any;
+      if (editingActa) {
+        await updateActa(editingActa.id, {
+          descripcion: data.descripcion || "",
+          codigoSAP: data.codigoSAP || "",
+          numeroLote: data.numeroLote || "",
+          ordenProduccion: data.ordenProduccion || "",
+          sustanciaControlada: !!data.sustanciaControlada,
+          clasificacion: data.clasificacion || "otro",
+          fechaVencimiento: data.fechaVencimiento || "",
+          registroINVIMA: data.registroINVIMA || "",
+          pesoKg: data.pesoKg || 0,
+          cantidadUnidades: data.cantidadUnidades || 0,
+          costoDestruccion: data.costoDestruccion || 0,
+          causal: selectedCausal,
+          otraCausal: otraCausal || undefined,
+          observaciones,
+          adjuntos,
+        });
+        await sendActa(editingActa.id, user.id, user.nombre);
+        window.localStorage.removeItem(ACTA_DRAFT_STORAGE_KEY);
+        toast.success(`Acta ${editingActa.consecutivo} enviada a aprobación`);
+        navigate(`/actas/${editingActa.id}`);
+        return;
+      }
+      const acta = await createActa({
       status: "enviada",
       empresa: data.empresa || "Humax",
       centroCostos: data.centroCostos || "",
@@ -182,7 +599,7 @@ export default function ActaCreatePage() {
       solicitanteId: user.id,
       solicitanteNombre: user.nombre,
       responsable: data.responsable || "",
-      area: data.area || "",
+      area: isAreaFixed ? user.area : (data.area || ""),
       descripcion: data.descripcion || "",
       codigoSAP: data.codigoSAP || "",
       numeroLote: data.numeroLote || "",
@@ -198,10 +615,14 @@ export default function ActaCreatePage() {
       otraCausal: otraCausal || undefined,
       observaciones,
       adjuntos,
-    });
-    sendActa(acta.id, user.id, user.nombre);
-    toast.success(`Acta ${acta.consecutivo} enviada a aprobación`);
-    navigate(`/actas/${acta.id}`);
+      });
+      await sendActa(acta.id, user.id, user.nombre);
+      window.localStorage.removeItem(ACTA_DRAFT_STORAGE_KEY);
+      toast.success(`Acta ${acta.consecutivo} enviada a aprobación`);
+      navigate(`/actas/${acta.id}`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "No se pudo crear el acta");
+    }
   };
 
   const filled = [
@@ -217,8 +638,8 @@ export default function ActaCreatePage() {
     <div className="max-w-3xl mx-auto space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-bold text-slate-900">Nueva Acta de Destrucción</h1>
-          <p className="text-sm text-slate-500 mt-0.5">Complete todos los pasos para crear el acta</p>
+          <h1 className="text-xl font-bold text-slate-900">{isEditing ? "Editar Acta de Destrucción" : "Nueva Acta de Destrucción"}</h1>
+          <p className="text-sm text-slate-500 mt-0.5">{isEditing ? "La información general está bloqueada; edite desde la información del material." : "Complete todos los pasos para crear el acta"}</p>
         </div>
       </div>
 
@@ -233,52 +654,80 @@ export default function ActaCreatePage() {
       {currentStep === 0 && (
         <div className="bg-white rounded-xl border border-slate-200 p-6">
           <h2 className="text-base font-semibold text-slate-800 mb-5">Paso 1 — Información General</h2>
-          <form onSubmit={onStep1} className="space-y-4">
+          <form onSubmit={onStep1} noValidate className="space-y-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Empresa *</label>
-                <select {...form1.register("empresa")} className="w-full px-3 py-2.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white">
+                <select disabled={isGeneralInfoLocked} {...form1.register("empresa")} className="w-full px-3 py-2.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed">
                   {EMPRESAS.map((e) => <option key={e} value={e}>{e}</option>)}
                 </select>
-                {form1.formState.errors.empresa && <p className="text-red-500 text-xs mt-1">{form1.formState.errors.empresa.message}</p>}
+                <FieldError message={form1.formState.errors.empresa?.message} />
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Centro de Costos *</label>
-                <select {...form1.register("centroCostos")} className="w-full px-3 py-2.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white">
-                  <option value="">Seleccione un CeCo</option>
-                  {cecosByEmpresa.map((c) => (
-                    <option key={`${c.empresaCode}-${c.ceco}`} value={`${c.ceco} - ${c.denominacion}`}>
-                      {c.ceco} — {c.denominacion}
-                    </option>
-                  ))}
-                </select>
-                {form1.formState.errors.centroCostos && <p className="text-red-500 text-xs mt-1">{form1.formState.errors.centroCostos.message}</p>}
+                <input type="hidden" {...form1.register("centroCostos")} />
+                <button
+                  type="button"
+                  disabled={isGeneralInfoLocked || !empresaWatch}
+                  onClick={() => setShowCecoModal(true)}
+                  className="w-full flex items-center justify-between gap-3 px-3 py-2.5 text-sm text-left border border-slate-300 rounded-lg bg-white hover:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed"
+                >
+                  <span className={selectedCeco ? "text-slate-800" : "text-slate-400"}>
+                    {selectedCeco ? `${selectedCeco.ceco} - ${selectedCeco.denominacion}` : "Seleccione un CeCo"}
+                  </span>
+                  <Search size={16} className="shrink-0 text-slate-400" />
+                </button>
+                <FieldError message={form1.formState.errors.centroCostos?.message} />
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Fecha de solicitud *</label>
-                <input {...form1.register("fecha")} type="date" className="w-full px-3 py-2.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                {form1.formState.errors.fecha && <p className="text-red-500 text-xs mt-1">{form1.formState.errors.fecha.message}</p>}
+                <DateField
+                  value={form1.watch("fecha")}
+                  onChange={(value) => form1.setValue("fecha", value, { shouldValidate: true, shouldDirty: true })}
+                  disabled={isGeneralInfoLocked}
+                />
+                <FieldError message={form1.formState.errors.fecha?.message} />
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Solicitante</label>
-                <input type="text" value={user?.nombre || ""} disabled className="w-full px-3 py-2.5 text-sm border border-slate-200 rounded-lg bg-slate-50 text-slate-500" />
+                <input type="text" value={user?.nombre || ""} disabled className="w-full px-3 py-2.5 text-sm border border-slate-200 rounded-lg bg-slate-100 text-slate-500 font-medium cursor-not-allowed pointer-events-none" />
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Responsable *</label>
-                <input {...form1.register("responsable")} placeholder="Nombre del responsable" className="w-full px-3 py-2.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                {form1.formState.errors.responsable && <p className="text-red-500 text-xs mt-1">{form1.formState.errors.responsable.message}</p>}
+                <input disabled={isGeneralInfoLocked} {...form1.register("responsable")} placeholder="Nombre del responsable" className="w-full px-3 py-2.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed" />
+                <FieldError message={form1.formState.errors.responsable?.message} />
               </div>
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Área *</label>
-                <select {...form1.register("area")} className="w-full px-3 py-2.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white">
-                  <option value="">Seleccione un área</option>
-                  {AREAS.map((a) => <option key={a} value={a}>{a}</option>)}
-                </select>
-                {form1.formState.errors.area && <p className="text-red-500 text-xs mt-1">{form1.formState.errors.area.message}</p>}
+                <label className="block text-sm font-medium text-slate-700 mb-1">{isAreaFixed ? "Área registrada" : "Área *"}</label>
+                {isAreaFixed ? (
+                  <>
+                    <input
+                      type="text"
+                      value={user?.area || form1.watch("area") || ""}
+                      disabled
+                      className="w-full px-3 py-2.5 text-sm border border-slate-200 rounded-lg bg-slate-100 text-slate-500 font-medium cursor-not-allowed pointer-events-none"
+                    />
+                    <p className="text-xs text-slate-500 mt-1">Tu usuario está registrado en esta área.</p>
+                  </>
+                ) : (
+                  <>
+                    <select
+                      disabled={isGeneralInfoLocked}
+                      {...form1.register("area")}
+                      value={user?.area || form1.watch("area") || ""}
+                      onChange={(e) => form1.setValue("area", e.target.value, { shouldValidate: true })}
+                      className="w-full px-3 py-2.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed"
+                    >
+                      <option value="">Seleccione un área</option>
+                      {AREAS.map((a) => <option key={a} value={a}>{a}</option>)}
+                    </select>
+                  </>
+                )}
+                <FieldError message={form1.formState.errors.area?.message} />
               </div>
             </div>
             <div className="flex justify-end pt-2">
-              <button type="submit" className="bg-blue-700 text-white px-6 py-2.5 rounded-lg text-sm font-medium hover:bg-blue-800 transition-colors">
+              <button type="submit" className="h-11 min-w-[140px] px-5 py-2.5 rounded-lg text-sm font-medium bg-blue-700 text-white hover:bg-blue-800 transition-colors">
                 Siguiente →
               </button>
             </div>
@@ -286,11 +735,52 @@ export default function ActaCreatePage() {
         </div>
       )}
 
+      <Modal open={showCecoModal} onClose={() => setShowCecoModal(false)} title={`Seleccionar CeCo · ${empresaWatch}`} size="lg">
+        <div className="space-y-4">
+          <div className="relative">
+            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input autoFocus value={cecoSearch} onChange={(event) => setCecoSearch(event.target.value)} placeholder="Buscar por código, denominación, responsable..." className="w-full pl-9 pr-3 py-2.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+          </div>
+          <div className="flex items-center justify-between text-xs text-slate-500">
+            <span>{filteredCecos.length} CeCos encontrados</span>
+            <span className="font-medium text-blue-700">{empresaWatch}</span>
+          </div>
+          <div className="max-h-[50vh] overflow-auto border border-slate-200 rounded-lg">
+            {filteredCecos.length === 0 ? (
+              <div className="p-8 text-center text-sm text-slate-500">No hay CeCos que coincidan con la búsqueda.</div>
+            ) : (
+              <table className="min-w-[680px] w-full text-sm">
+                <thead className="sticky top-0 bg-slate-50 border-b border-slate-200">
+                  <tr>
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">CeCo</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Denominación</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Responsable</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Departamento</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Estado</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {filteredCecos.map((ceco) => (
+                    <tr key={ceco.id || `${ceco.empresaCode}-${ceco.ceco}`} onClick={() => selectCeco(ceco)} className="cursor-pointer hover:bg-blue-50 transition-colors">
+                      <td className="px-4 py-3 font-mono text-xs font-semibold text-blue-700">{ceco.ceco}</td>
+                      <td className="px-4 py-3 font-medium text-slate-800">{ceco.denominacion}</td>
+                      <td className="px-4 py-3 text-slate-600">{ceco.responsable || "Sin responsable"}</td>
+                      <td className="px-4 py-3 text-xs text-slate-500">{ceco.departamento || "Sin departamento"}</td>
+                      <td className="px-4 py-3 text-xs text-slate-500">{ceco.status}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </div>
+      </Modal>
+
       {/* Step 2: Material Info */}
       {currentStep === 1 && (
         <div className="bg-white rounded-xl border border-slate-200 p-6">
           <h2 className="text-base font-semibold text-slate-800 mb-5">Paso 2 — Información del Material</h2>
-          <form onSubmit={onStep2} className="space-y-4">
+          <form onSubmit={onStep2} noValidate className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">Registro INVIMA *</label>
               <div className="relative">
@@ -310,59 +800,87 @@ export default function ActaCreatePage() {
                         <p className="text-xs text-slate-500">{p.registryNumber} · {p.holder} · {p.presentacion}</p>
                       </button>
                     ))}
+
                   </div>
                 )}
               </div>
-              {form2.formState.errors.registroINVIMA && <p className="text-red-500 text-xs mt-1">{form2.formState.errors.registroINVIMA.message}</p>}
+              <FieldError message={form2.formState.errors.registroINVIMA?.message} />
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="sm:col-span-2">
                 <label className="block text-sm font-medium text-slate-700 mb-1">Descripción del material *</label>
                 <input {...form2.register("descripcion")} placeholder="Nombre, concentración y presentación" className="w-full px-3 py-2.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                {form2.formState.errors.descripcion && <p className="text-red-500 text-xs mt-1">{form2.formState.errors.descripcion.message}</p>}
+                <FieldError message={form2.formState.errors.descripcion?.message} />
+              </div>
+              <div className="sm:col-span-2">
+                <label className="block text-sm font-medium text-slate-700 mb-2">¿Es sustancia controlada?</label>
+                <div className="flex gap-3">
+                  <label className={`flex-1 flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg border text-sm font-medium cursor-pointer transition-all ${form2.watch("sustanciaControlada") === true ? "border-blue-300 bg-blue-50 text-blue-700 ring-1 ring-blue-200 shadow-[0_0_0_1px_rgba(191,219,254,0.45)]" : "border-slate-300 hover:border-blue-300 bg-white text-slate-700"}`}>
+                    <input
+                      type="radio"
+                      checked={form2.watch("sustanciaControlada") === true}
+                      onChange={() => form2.setValue("sustanciaControlada", true, { shouldValidate: true, shouldDirty: true })}
+                      className="h-4 w-4 accent-blue-600"
+                    />
+                    <span>Sí</span>
+                  </label>
+                  <label className={`flex-1 flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg border text-sm font-medium cursor-pointer transition-all ${form2.watch("sustanciaControlada") === false ? "border-blue-300 bg-blue-50 text-blue-700 ring-1 ring-blue-200 shadow-[0_0_0_1px_rgba(191,219,254,0.45)]" : "border-slate-300 hover:border-blue-300 bg-white text-slate-700"}`}>
+                    <input
+                      type="radio"
+                      checked={form2.watch("sustanciaControlada") === false}
+                      onChange={() => form2.setValue("sustanciaControlada", false, { shouldValidate: true, shouldDirty: true })}
+                      className="h-4 w-4 accent-blue-600"
+                    />
+                    <span>No</span>
+                  </label>
+                </div>
+                <FieldError message={form2.formState.errors.sustanciaControlada?.message} />
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Código SAP *</label>
+
                 <input {...form2.register("codigoSAP")} placeholder="SAP-XXXXX" className="w-full px-3 py-2.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                {form2.formState.errors.codigoSAP && <p className="text-red-500 text-xs mt-1">{form2.formState.errors.codigoSAP.message}</p>}
+                <FieldError message={form2.formState.errors.codigoSAP?.message} />
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Número de Lote *</label>
                 <input {...form2.register("numeroLote")} placeholder="LOT-XXXX o NO APLICA" className="w-full px-3 py-2.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                {form2.formState.errors.numeroLote && <p className="text-red-500 text-xs mt-1">{form2.formState.errors.numeroLote.message}</p>}
+                <FieldError message={form2.formState.errors.numeroLote?.message} />
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Orden de Producción *</label>
                 <input {...form2.register("ordenProduccion")} placeholder="OP-XXXX o NO APLICA" className="w-full px-3 py-2.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                {form2.formState.errors.ordenProduccion && <p className="text-red-500 text-xs mt-1">{form2.formState.errors.ordenProduccion.message}</p>}
+                <FieldError message={form2.formState.errors.ordenProduccion?.message} />
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Fecha de Vencimiento *</label>
-                <input {...form2.register("fechaVencimiento")} type="date" className="w-full px-3 py-2.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                {form2.formState.errors.fechaVencimiento && <p className="text-red-500 text-xs mt-1">{form2.formState.errors.fechaVencimiento.message}</p>}
+                <DateField
+                  value={form2.watch("fechaVencimiento")}
+                  onChange={(value) => form2.setValue("fechaVencimiento", value, { shouldValidate: true, shouldDirty: true })}
+                />
+                <FieldError message={form2.formState.errors.fechaVencimiento?.message} />
               </div>
               <div className="sm:col-span-2">
                 <label className="block text-sm font-medium text-slate-700 mb-2">Clasificación *</label>
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                   {Object.entries(CLASIFICACION_LABELS).map(([val, lbl]) => (
                     <label key={val} className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-sm cursor-pointer transition-all ${form2.watch("clasificacion") === val ? "border-blue-500 bg-blue-50 text-blue-700" : "border-slate-200 hover:border-slate-300"}`}>
-                      <input {...form2.register("clasificacion")} type="radio" value={val} className="sr-only" />
-                      {lbl}
+                      <input
+                        {...form2.register("clasificacion")}
+                        type="radio"
+                        value={val}
+                        className="h-4 w-4 accent-blue-600 shrink-0"
+                      />
+                      <span>{lbl}</span>
                     </label>
                   ))}
                 </div>
               </div>
-              <div className="sm:col-span-2">
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input {...form2.register("sustanciaControlada")} type="checkbox" className="w-4 h-4 text-blue-600 rounded border-slate-300" />
-                  <span className="text-sm font-medium text-slate-700">¿Es sustancia controlada?</span>
-                </label>
-              </div>
             </div>
             <div className="flex justify-between pt-2">
-              <button type="button" onClick={() => setCurrentStep(0)} className="px-4 py-2.5 text-sm text-slate-600 hover:text-slate-900 font-medium">← Anterior</button>
-              <button type="submit" className="bg-blue-700 text-white px-6 py-2.5 rounded-lg text-sm font-medium hover:bg-blue-800 transition-colors">Siguiente →</button>
+              <button type="button" onClick={() => setCurrentStep(0)} className="h-11 min-w-[140px] px-4 py-2.5 text-sm text-slate-700 font-medium bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors">← Anterior</button>
+              <button type="submit" className="h-11 min-w-[140px] px-5 py-2.5 rounded-lg text-sm font-medium bg-blue-700 text-white hover:bg-blue-800 transition-colors">Siguiente →</button>
             </div>
           </form>
         </div>
@@ -372,27 +890,48 @@ export default function ActaCreatePage() {
       {currentStep === 2 && (
         <div className="bg-white rounded-xl border border-slate-200 p-6">
           <h2 className="text-base font-semibold text-slate-800 mb-5">Paso 3 — Información Económica</h2>
-          <form onSubmit={onStep3} className="space-y-4">
+          <form onSubmit={onStep3} noValidate className="space-y-4">
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Peso (kg) *</label>
-                <input {...form3.register("pesoKg", { valueAsNumber: true })} type="number" step="0.001" min="0" placeholder="0.000" className="w-full px-3 py-2.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                {form3.formState.errors.pesoKg && <p className="text-red-500 text-xs mt-1">{form3.formState.errors.pesoKg.message}</p>}
+                <input
+                  {...form3.register("pesoKg")}
+                  type="text"
+                  inputMode="decimal"
+                  placeholder="0.000"
+                  maxLength={12}
+                  className="w-full px-3 py-2.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <FieldError message={form3.formState.errors.pesoKg?.message} />
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Cantidad (unidades) *</label>
-                <input {...form3.register("cantidadUnidades", { valueAsNumber: true })} type="number" min="1" placeholder="0" className="w-full px-3 py-2.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                {form3.formState.errors.cantidadUnidades && <p className="text-red-500 text-xs mt-1">{form3.formState.errors.cantidadUnidades.message}</p>}
+                <input
+                  {...form3.register("cantidadUnidades")}
+                  type="text"
+                  inputMode="numeric"
+                  maxLength={9}
+                  placeholder="0"
+                  className="w-full px-3 py-2.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <FieldError message={form3.formState.errors.cantidadUnidades?.message} />
               </div>
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Costo destrucción (COP) *</label>
-                <input {...form3.register("costoDestruccion", { valueAsNumber: true })} type="number" min="0" placeholder="0" className="w-full px-3 py-2.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                {form3.formState.errors.costoDestruccion && <p className="text-red-500 text-xs mt-1">{form3.formState.errors.costoDestruccion.message}</p>}
+                <label className="block text-sm font-medium text-slate-700 mb-1">Costo de destrucción (COP) *</label>
+                <input
+                  {...form3.register("costoDestruccion")}
+                  type="text"
+                  inputMode="numeric"
+                  maxLength={13}
+                  placeholder="0"
+                  className="w-full px-3 py-2.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <FieldError message={form3.formState.errors.costoDestruccion?.message} />
               </div>
             </div>
             <div className="flex justify-between pt-2">
-              <button type="button" onClick={() => setCurrentStep(1)} className="px-4 py-2.5 text-sm text-slate-600 hover:text-slate-900 font-medium">← Anterior</button>
-              <button type="submit" className="bg-blue-700 text-white px-6 py-2.5 rounded-lg text-sm font-medium hover:bg-blue-800 transition-colors">Siguiente →</button>
+              <button type="button" onClick={() => setCurrentStep(1)} className="h-11 min-w-[140px] px-4 py-2.5 text-sm text-slate-700 font-medium bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors">← Anterior</button>
+              <button type="submit" className="h-11 min-w-[140px] px-5 py-2.5 rounded-lg text-sm font-medium bg-blue-700 text-white hover:bg-blue-800 transition-colors">Siguiente →</button>
             </div>
           </form>
         </div>
@@ -437,11 +976,10 @@ export default function ActaCreatePage() {
             </p>
           )}
           <div className="flex justify-between pt-4">
-            <button onClick={() => setCurrentStep(2)} className="px-4 py-2.5 text-sm text-slate-600 hover:text-slate-900 font-medium">← Anterior</button>
+            <button onClick={() => setCurrentStep(2)} className="h-11 min-w-[140px] px-4 py-2.5 text-sm text-slate-700 font-medium bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors">← Anterior</button>
             <button
-              onClick={() => { if (selectedCausal) { setCompletedSteps((p) => [...new Set([...p, 3])]); setCurrentStep(4); } else toast.error("Seleccione una causal"); }}
-              disabled={!selectedCausal}
-              className="bg-blue-700 text-white px-6 py-2.5 rounded-lg text-sm font-medium hover:bg-blue-800 transition-colors disabled:opacity-50"
+              onClick={() => { if (selectedCausal) { setCompletedSteps((p) => [...new Set([...p, 3])]); setCurrentStep(4); } else toast.error("Seleccione al menos una causal"); }}
+              className="h-11 min-w-[140px] px-5 py-2.5 rounded-lg text-sm font-medium bg-blue-700 text-white hover:bg-blue-800 transition-colors"
             >
               Siguiente →
             </button>
@@ -493,10 +1031,10 @@ export default function ActaCreatePage() {
             </div>
           </div>
           <div className="flex justify-between pt-4">
-            <button onClick={() => setCurrentStep(3)} className="px-4 py-2.5 text-sm text-slate-600 hover:text-slate-900 font-medium">← Anterior</button>
+            <button onClick={() => setCurrentStep(3)} className="h-11 min-w-[140px] px-4 py-2.5 text-sm text-slate-700 font-medium bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors">← Anterior</button>
             <button
               onClick={() => { setCompletedSteps((p) => [...new Set([...p, 4])]); setCurrentStep(5); }}
-              className="bg-blue-700 text-white px-6 py-2.5 rounded-lg text-sm font-medium hover:bg-blue-800 transition-colors"
+              className="h-11 min-w-[140px] px-5 py-2.5 rounded-lg text-sm font-medium bg-blue-700 text-white hover:bg-blue-800 transition-colors"
             >
               Ver Resumen →
             </button>
@@ -551,12 +1089,12 @@ export default function ActaCreatePage() {
           </div>
 
           <div className="flex justify-between pt-5 border-t border-slate-200 mt-5">
-            <button onClick={() => setCurrentStep(4)} className="px-4 py-2.5 text-sm text-slate-600 hover:text-slate-900 font-medium">← Anterior</button>
+            <button onClick={() => setCurrentStep(4)} className="h-11 min-w-[140px] px-4 py-2.5 text-sm text-slate-700 font-medium bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors">← Anterior</button>
             <div className="flex gap-3">
-              <button onClick={handleSaveDraft} className="px-5 py-2.5 text-sm font-medium border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition-colors">
+              <button onClick={handleSaveDraft} className="h-11 min-w-[140px] px-5 py-2.5 text-sm font-medium border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition-colors">
                 Guardar Borrador
               </button>
-              <button onClick={handleSendApproval} className="bg-blue-700 text-white px-6 py-2.5 rounded-lg text-sm font-semibold hover:bg-blue-800 transition-colors flex items-center gap-2">
+              <button onClick={handleSendApproval} className="h-11 min-w-[170px] px-5 py-2.5 rounded-lg text-sm font-semibold bg-blue-700 text-white hover:bg-blue-800 transition-colors flex items-center justify-center gap-2">
                 <CheckCircle2 size={16} /> Enviar a Aprobación
               </button>
             </div>

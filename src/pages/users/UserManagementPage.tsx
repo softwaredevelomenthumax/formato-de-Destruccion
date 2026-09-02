@@ -144,10 +144,10 @@ export default function UserManagementPage() {
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-3">
                             <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-xs font-bold shrink-0">
-                              {u.nombre.charAt(0).toUpperCase()}
+                              {(u.nombre || 'U').charAt(0).toUpperCase()}
                             </div>
                             <div>
-                              <p className="font-medium text-slate-800">{u.nombre}</p>
+                              <p className="font-medium text-slate-800">{u.nombre || 'Sin nombre'}</p>
                               <p className="text-xs text-slate-500">{u.username}{u.email ? ` · ${u.email}` : ""}</p>
                             </div>
                           </div>
@@ -243,7 +243,7 @@ export default function UserManagementPage() {
             </div>
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">Usuario *</label>
-              <input value={form.username} onChange={(e) => setForm((p) => ({ ...p, username: e.target.value }))} disabled={!!editUser} className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-50" />
+              <input value={form.username} onChange={(e) => setForm((p) => ({ ...p, username: e.target.value }))} disabled={!!editUser} className="w-full px-3 py-2 text-sm border border-blue-200 rounded-lg bg-blue-50 text-blue-800 font-medium cursor-not-allowed pointer-events-none focus:outline-none" />
             </div>
             {!editUser && (
               <div>

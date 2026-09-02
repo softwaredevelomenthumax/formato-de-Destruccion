@@ -4,7 +4,7 @@ import {
   LayoutDashboard, FileText, FilePlus, Users, Settings, BarChart3,
   Search, Bell, BookOpen, Package, LogOut, ChevronRight,
   ClipboardCheck, Building2, PanelLeftClose, PanelLeftOpen,
-  Sun, Moon
+  Sun, Moon, UserCircle2
 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import { useApp } from "../../context/AppContext";
@@ -23,12 +23,13 @@ interface NavItem {
 
 const NAV_ITEMS: NavItem[] = [
   { to: "/dashboard", label: "Dashboard", icon: <LayoutDashboard size={18} />, roles: ["administrador", "solicitante", "aprobador_area", "costos", "hse", "planeacion"] },
-  { to: "/actas", label: "Actas de Destrucción", icon: <FileText size={18} />, roles: ["administrador", "solicitante", "aprobador_area", "costos", "hse", "planeacion"] },
+  { to: "/perfil", label: "Mi perfil", icon: <UserCircle2 size={18} />, roles: ["administrador", "solicitante", "aprobador_area", "costos", "hse", "planeacion"] },
+  { to: "/actas", label: "Ver actas", icon: <FileText size={18} />, roles: ["administrador", "solicitante", "aprobador_area", "costos", "hse", "planeacion"] },
   { to: "/actas/nueva", label: "Nueva Acta", icon: <FilePlus size={18} />, roles: ["solicitante"] },
   { to: "/aprobaciones", label: "Pendientes de Aprobación", icon: <ClipboardCheck size={18} />, roles: ["aprobador_area", "costos", "hse"] },
   { to: "/usuarios", label: "Gestión de Usuarios", icon: <Users size={18} />, roles: ["administrador"] },
-  { to: "/maestros/cecos", label: "Maestro CeCos", icon: <Building2 size={18} />, roles: ["administrador", "costos"] },
-  { to: "/maestros/invima", label: "Maestro INVIMA", icon: <Package size={18} />, roles: ["administrador", "planeacion"] },
+  { to: "/maestros/cecos", label: "Maestro CeCos", icon: <Building2 size={18} />, roles: ["costos"] },
+  { to: "/maestros/invima", label: "Maestro INVIMA", icon: <Package size={18} />, roles: ["planeacion"] },
   { to: "/reportes", label: "Reportes", icon: <BarChart3 size={18} />, roles: ["administrador", "aprobador_area", "costos", "hse", "planeacion"] },
   { to: "/busqueda", label: "Búsqueda Global", icon: <Search size={18} />, roles: ["administrador", "solicitante", "aprobador_area", "costos", "hse", "planeacion"] },
 ];
@@ -40,14 +41,28 @@ type Theme = "light" | "dark";
 
 function getInitialTheme(): Theme {
   if (typeof window === "undefined") return "light";
-  const stored = localStorage.getItem(THEME_KEY);
-  if (stored === "light" || stored === "dark") return stored;
-  return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+
+  try {
+    const stored = localStorage.getItem(THEME_KEY);
+    if (stored === "light" || stored === "dark") return stored;
+  } catch {
+    // Ignore storage access issues in restricted browsers.
+  }
+
+  if (typeof window.matchMedia === "function") {
+    return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  }
+
+  return "light";
 }
 
 function getInitialCollapsed(): boolean {
   if (typeof window === "undefined") return false;
-  return localStorage.getItem(COLLAPSED_KEY) === "true";
+
+  const stored = localStorage.getItem(COLLAPSED_KEY);
+  if (stored === null) return false;
+
+  return stored === "true";
 }
 
 export function Sidebar() {
@@ -62,17 +77,27 @@ export function Sidebar() {
   useEffect(() => {
     const root = document.documentElement;
     root.classList.toggle("dark", theme === "dark");
-    localStorage.setItem(THEME_KEY, theme);
+
+    try {
+      localStorage.setItem(THEME_KEY, theme);
+    } catch {
+      // Ignore storage write issues in restricted environments.
+    }
   }, [theme]);
 
   useEffect(() => {
-    localStorage.setItem(COLLAPSED_KEY, String(collapsed));
+    try {
+      localStorage.setItem(COLLAPSED_KEY, String(collapsed));
+    } catch {
+      // Ignore storage write issues in restricted environments.
+    }
   }, [collapsed]);
 
   if (!user) return null;
 
+  const safeSolicitudes = Array.isArray(solicitudes) ? solicitudes : [];
   const unread = getUserNotifications(user.id).filter((n) => !n.read).length;
-  const pendingSolicitudes = solicitudes.filter((s) => s.status === "pendiente").length;
+  const pendingSolicitudes = safeSolicitudes.filter((s) => s.status === "pendiente").length;
 
   const filteredNav = NAV_ITEMS.filter((item) => item.roles.includes(user.rol));
   const toggleTheme = () => setTheme((t) => (t === "dark" ? "light" : "dark"));
@@ -114,7 +139,7 @@ export function Sidebar() {
           <NavLink
             key={item.to}
             to={item.to}
-            end={item.to === "/dashboard"}
+            end={item.to === "/dashboard" || item.to === "/actas"}
             title={collapsed ? item.label : undefined}
             className={({ isActive }) =>
               `group flex items-center gap-3 rounded-lg text-sm font-medium transition-all ${
@@ -222,7 +247,7 @@ export function Sidebar() {
             <>
               <div className="min-w-0 flex-1">
                 <p className="truncate text-xs font-medium text-slate-900 dark:text-slate-200">{user.nombre}</p>
-                <p className="truncate text-xs capitalize text-slate-500">{user.rol.replace("_", " ")}</p>
+                <p className="truncate text-xs capitalize text-slate-500">{(user.rol ?? "solicitante").replace("_", " ")}</p>
               </div>
               <button
                 onClick={logout}

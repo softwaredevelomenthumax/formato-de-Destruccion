@@ -40,6 +40,20 @@ export default function ActaDetailPage() {
 
   if (!user) return null;
 
+  const safeHistorial = Array.isArray(acta.historial) ? acta.historial : [];
+  const safeAdjuntos = Array.isArray(acta.adjuntos) ? acta.adjuntos : [];
+  const safeAprobaciones = Array.isArray(acta.aprobaciones) ? acta.aprobaciones : [];
+  const safeCosto = Number.isFinite(Number(acta.costoDestruccion)) ? Number(acta.costoDestruccion) : 0;
+  const safePeso = Number.isFinite(Number(acta.pesoKg)) ? Number(acta.pesoKg) : 0;
+  const safeCantidad = Number.isFinite(Number(acta.cantidadUnidades)) ? Number(acta.cantidadUnidades) : 0;
+
+  const formatFecha = (value?: string | null) => {
+    if (!value) return "—";
+    const fecha = new Date(value);
+    if (Number.isNaN(fecha.getTime())) return "—";
+    return format(fecha, "dd/MM/yyyy HH:mm", { locale: es });
+  };
+
   const getPasoForRole = () => {
     if (user.rol === "aprobador_area") return "area" as const;
     if (user.rol === "costos") return "costos" as const;
@@ -49,30 +63,30 @@ export default function ActaDetailPage() {
 
   const paso = getPasoForRole();
   const canApprove = paso && acta.status === `pendiente_${paso === "area" ? "aprobacion_area" : paso}` && acta.solicitanteId !== user.id;
-  const canEdit = user.rol === "solicitante" && acta.solicitanteId === user.id && acta.status === "devuelta_ajustes";
+  const canEdit = user.rol === "solicitante" && acta.solicitanteId === user.id && (acta.status === "borrador" || acta.status === "devuelta_ajustes");
   const canSend = user.rol === "solicitante" && acta.solicitanteId === user.id && acta.status === "borrador";
 
-  const handleApprove = () => {
+  const handleApprove = async () => {
     if (!paso) return;
-    approveActa(acta.id, paso, user.username, approveComment);
+    await approveActa(acta.id, paso, user.username, approveComment);
     toast.success("Acta aprobada exitosamente");
     setShowApprove(false);
     setApproveComment("");
   };
 
-  const handleReject = () => {
+  const handleReject = async () => {
     if (!paso || !rejectReason.trim()) { toast.error("El motivo de rechazo es obligatorio"); return; }
-    rejectActa(acta.id, paso, user.username, rejectReason);
+    await rejectActa(acta.id, paso, user.username, rejectReason);
     toast.success("Acta rechazada");
     setShowReject(false);
     setRejectReason("");
   };
 
-  const handleReturn = () => {
+  const handleReturn = async () => {
     if (!paso) return;
     const validAjustes = ajustes.filter((a) => a.campo && a.correccion);
     if (validAjustes.length === 0) { toast.error("Debe indicar al menos un ajuste requerido"); return; }
-    returnActa(acta.id, paso, user.username, validAjustes);
+    await returnActa(acta.id, paso, user.username, validAjustes);
     toast.success("Acta devuelta para correcciones");
     setShowReturn(false);
   };
@@ -162,9 +176,9 @@ export default function ActaDetailPage() {
 
           <InfoCard title="Información Económica">
             <Grid2>
-              <Row label="Peso (kg)" value={`${acta.pesoKg} kg`} />
-              <Row label="Unidades" value={String(acta.cantidadUnidades)} />
-              <Row label="Costo Destrucción" value={`COP ${acta.costoDestruccion.toLocaleString("es-CO")}`} />
+              <Row label="Peso (kg)" value={`${safePeso} kg`} />
+              <Row label="Unidades" value={String(safeCantidad)} />
+              <Row label="Costo Destrucción" value={`COP ${safeCosto.toLocaleString("es-CO")}`} />
               <Row label="Requiere Costos" value={acta.requiereCostos ? "Sí" : "No"} />
             </Grid2>
           </InfoCard>
@@ -180,10 +194,10 @@ export default function ActaDetailPage() {
             </InfoCard>
           )}
 
-          {acta.adjuntos.length > 0 && (
+          {safeAdjuntos.length > 0 && (
             <InfoCard title="Documentos Adjuntos">
               <div className="space-y-1.5">
-                {acta.adjuntos.map((adj, i) => (
+                {safeAdjuntos.map((adj, i) => (
                   <div key={i} className="flex items-center gap-2 text-sm text-blue-700 hover:text-blue-900 cursor-pointer">
                     <FileText size={14} />
                     <span className="underline">{adj}</span>
@@ -196,18 +210,18 @@ export default function ActaDetailPage() {
           {/* History */}
           <InfoCard title="Historial de Cambios">
             <div className="space-y-2 max-h-64 overflow-y-auto">
-              {acta.historial.map((h) => (
-                <div key={h.id} className="flex items-start gap-3 text-sm py-1.5 border-b border-slate-100 last:border-0">
-                  <div className="text-xs text-slate-500 shrink-0 w-28">{h.fecha} {h.hora}</div>
+              {safeHistorial.map((h) => (
+                <div key={h.id || `${h.usuario}-${h.fecha}-${h.hora}`} className="flex items-start gap-3 text-sm py-1.5 border-b border-slate-100 last:border-0">
+                  <div className="text-xs text-slate-500 shrink-0 w-28">{h.fecha || "—"} {h.hora || ""}</div>
                   <div className="flex-1 min-w-0">
-                    <span className="font-medium text-slate-700">{h.usuario}</span>
+                    <span className="font-medium text-slate-700">{h.usuario || "Sistema"}</span>
                     <span className="text-slate-500 mx-1">·</span>
-                    <span className="text-slate-600">{h.accion}</span>
+                    <span className="text-slate-600">{h.accion || "Cambio registrado"}</span>
                     {h.campo && (
-                      <p className="text-xs text-slate-400 mt-0.5">{h.campo}: {h.valorAnterior} → {h.valorNuevo}</p>
+                      <p className="text-xs text-slate-400 mt-0.5">{h.campo}: {h.valorAnterior ?? "—"} → {h.valorNuevo ?? "—"}</p>
                     )}
                   </div>
-                  <div className="text-xs text-slate-400">{h.equipo}</div>
+                  <div className="text-xs text-slate-400">{h.equipo || "—"}</div>
                 </div>
               ))}
             </div>
@@ -217,14 +231,14 @@ export default function ActaDetailPage() {
         {/* Sidebar: Approval timeline */}
         <div className="space-y-4">
           <InfoCard title="Flujo de Aprobación">
-            <ApprovalTimeline aprobaciones={acta.aprobaciones} />
+            <ApprovalTimeline aprobaciones={safeAprobaciones} />
           </InfoCard>
           <div className="bg-slate-50 rounded-xl border border-slate-200 p-4 space-y-2">
             <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Metadatos</p>
             <div className="space-y-1">
-              <Row label="Creado" value={format(new Date(acta.createdAt), "dd/MM/yyyy HH:mm", { locale: es })} />
-              <Row label="Actualizado" value={format(new Date(acta.updatedAt), "dd/MM/yyyy HH:mm", { locale: es })} />
-              <Row label="ID" value={acta.id} />
+              <Row label="Creado" value={formatFecha(acta.createdAt)} />
+              <Row label="Actualizado" value={formatFecha(acta.updatedAt)} />
+              <Row label="ID" value={acta.id || "—"} />
             </div>
           </div>
         </div>
@@ -338,11 +352,13 @@ function Grid2({ children }: { children: React.ReactNode }) {
   return <div className="grid grid-cols-2 gap-x-4 gap-y-2">{children}</div>;
 }
 
-function Row({ label, value, className = "" }: { label: string; value: string; className?: string }) {
+function Row({ label, value, className = "" }: { label: string; value: string | number | boolean | null | undefined; className?: string }) {
+  const normalizedValue = value == null || value === "" ? "—" : String(value);
+
   return (
     <div className={`${className}`}>
       <p className="text-xs text-slate-500 font-medium">{label}</p>
-      <p className="text-sm text-slate-800 mt-0.5">{value || "—"}</p>
+      <p className="text-sm text-slate-800 mt-0.5">{normalizedValue}</p>
     </div>
   );
 }

@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import { useNavigate } from "react-router";
-import { FileText, Plus, Search, Filter, Download, Trash2, Eye } from "lucide-react";
+import { FileText, Search, Filter, Download, Trash2, Eye } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import { useApp } from "../../context/AppContext";
 import { ActaStatusBadge } from "../../components/ui/Badge";
@@ -57,8 +57,6 @@ export default function ActaListPage() {
   };
 
   const canDelete = (status: ActaStatus) => user?.rol === "administrador" && status !== "cerrada";
-  const canCreate = user?.rol === "solicitante";
-
   return (
     <div className="space-y-5">
       <div className="flex items-center justify-between">
@@ -66,11 +64,6 @@ export default function ActaListPage() {
           <h1 className="text-xl font-bold text-slate-900">Actas de Destrucción</h1>
           <p className="text-sm text-slate-500 mt-0.5">{visibleActas.length} acta(s) encontrada(s)</p>
         </div>
-        {canCreate && (
-          <button onClick={() => navigate("/actas/nueva")} className="bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-800 transition-colors flex items-center gap-2">
-            <Plus size={16} /> Nueva Acta
-          </button>
-        )}
       </div>
 
       {/* Filters */}

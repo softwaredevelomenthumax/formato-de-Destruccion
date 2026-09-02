@@ -55,7 +55,8 @@ export default function NotificationsPage() {
         ) : (
           <div className="divide-y divide-slate-100">
             {notifications.map((n) => {
-              const styles = TYPE_STYLES[n.type];
+              const typeKey = n?.type && TYPE_STYLES[n.type] ? n.type : "info";
+              const styles = TYPE_STYLES[typeKey];
               return (
                 <div
                   key={n.id}
@@ -64,10 +65,10 @@ export default function NotificationsPage() {
                 >
                   <div className={`w-2.5 h-2.5 rounded-full shrink-0 mt-1.5 ${n.read ? "bg-slate-300" : styles.dot}`} />
                   <div className="flex-1 min-w-0">
-                    <p className={`text-sm font-semibold ${n.read ? "text-slate-600" : "text-slate-900"}`}>{n.title}</p>
-                    <p className="text-sm text-slate-600 mt-0.5">{n.message}</p>
+                    <p className={`text-sm font-semibold ${n.read ? "text-slate-600" : "text-slate-900"}`}>{n.title || "Notificación"}</p>
+                    <p className="text-sm text-slate-600 mt-0.5">{n.message || "Sin detalle"}</p>
                     <p className="text-xs text-slate-400 mt-1">
-                      {formatDistanceToNow(new Date(n.createdAt), { addSuffix: true, locale: es })}
+                      {n.createdAt ? formatDistanceToNow(new Date(n.createdAt), { addSuffix: true, locale: es }) : "Hace un momento"}
                     </p>
                   </div>
                   {!n.read && (

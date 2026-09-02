@@ -41,6 +41,7 @@ export default function RegisterPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  const [submitError, setSubmitError] = useState("");
 
   const { register, handleSubmit, watch, formState: { errors, isSubmitting } } = useForm<FormData>({
     resolver: zodResolver(schema),
@@ -51,19 +52,26 @@ export default function RegisterPage() {
   const requireEmail = rolSolicitado !== "solicitante";
 
   const onSubmit = async (data: FormData) => {
+    setSubmitError("");
     const exists = users.find((u) => u.username === data.username);
     if (exists) {
+      setSubmitError("Ese usuario ya existe");
       return;
     }
-    await new Promise((r) => setTimeout(r, 400));
-    registerSolicitud({
-      username: data.username,
-      nombre: data.username,
-      area: data.area,
-      rolSolicitado: data.rolSolicitado,
-      email: data.email || undefined,
-    });
-    setSubmitted(true);
+    try {
+      await new Promise((r) => setTimeout(r, 400));
+      await registerSolicitud({
+        username: data.username,
+        password: data.password,
+        nombre: data.username,
+        area: data.area,
+        rolSolicitado: data.rolSolicitado,
+        email: data.email || undefined,
+      });
+      setSubmitted(true);
+    } catch (error) {
+      setSubmitError(error instanceof Error ? error.message : "No se pudo guardar la solicitud");
+    }
   };
 
   if (submitted) {
@@ -86,9 +94,6 @@ export default function RegisterPage() {
           </button>
         </div>
 
-        <p className="pointer-events-none absolute inset-x-0 bottom-5 mx-auto w-fit rounded-full border border-blue-200/30 bg-blue-500/15 px-4 py-1.5 text-center text-xs font-semibold text-blue-100 shadow-sm backdrop-blur-sm">
-          Humax Pharmaceutical, filial de Bausch Health Companies Inc.
-        </p>
       </div>
     );
   }
@@ -130,12 +135,14 @@ export default function RegisterPage() {
             <p className="text-blue-200 text-xs mt-1">Sistema ADD — Humax Pharmaceutical</p>
           </div>
 
-          <form onSubmit={handleSubmit(onSubmit)} className="px-8 py-6 space-y-4">
+          <form onSubmit={handleSubmit(onSubmit)} autoComplete="off" className="px-8 py-6 space-y-4">
+            {submitError && <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{submitError}</p>}
             <div className="grid grid-cols-1 gap-4">
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Usuario *</label>
                 <input
                   {...register("username")}
+                  autoComplete="off"
                   placeholder="usuario.apellido"
                   className={`w-full px-3.5 py-2.5 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${errors.username ? "border-red-400" : "border-slate-300"}`}
                 />
@@ -148,6 +155,7 @@ export default function RegisterPage() {
                   <input
                     {...register("password")}
                     type={showPassword ? "text" : "password"}
+                    autoComplete="new-password"
                     placeholder="Mínimo 8 caracteres"
                     className={`w-full px-3.5 py-2.5 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 pr-10 ${errors.password ? "border-red-400" : "border-slate-300"}`}
                   />
@@ -164,6 +172,7 @@ export default function RegisterPage() {
                   <input
                     {...register("confirmPassword")}
                     type={showConfirm ? "text" : "password"}
+                    autoComplete="new-password"
                     placeholder="Repita la contraseña"
                     className={`w-full px-3.5 py-2.5 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 pr-10 ${errors.confirmPassword ? "border-red-400" : "border-slate-300"}`}
                   />
@@ -229,9 +238,6 @@ export default function RegisterPage() {
         </div>
       </div>
 
-      <p className="pointer-events-none absolute inset-x-0 bottom-5 mx-auto w-fit rounded-full border border-blue-200/30 bg-blue-500/15 px-4 py-1.5 text-center text-xs font-semibold text-blue-100 shadow-sm backdrop-blur-sm">
-        Humax Pharmaceutical, filial de Bausch Health Companies Inc.
-      </p>
     </div>
   );
 }

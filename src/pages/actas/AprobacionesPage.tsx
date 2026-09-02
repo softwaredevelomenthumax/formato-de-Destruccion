@@ -20,7 +20,9 @@ export default function AprobacionesPage() {
   };
 
   const targetStatus = statusMap[user.rol];
-  const pendingActas = actas.filter((a) => a.status === targetStatus);
+  const pendingActas = Array.isArray(actas)
+    ? actas.filter((a) => a && a.status === targetStatus)
+    : [];
 
   return (
     <div className="space-y-5">
@@ -38,32 +40,35 @@ export default function AprobacionesPage() {
           />
         ) : (
           <div className="divide-y divide-slate-100">
-            {pendingActas.map((acta) => (
-              <div key={acta.id} className="flex items-center gap-4 px-5 py-4 hover:bg-slate-50 transition-colors">
-                <div className="w-10 h-10 bg-amber-50 rounded-xl flex items-center justify-center shrink-0">
-                  <Clock size={18} className="text-amber-600" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <p className="text-sm font-bold text-slate-900 font-mono">{acta.consecutivo}</p>
-                    <ActaStatusBadge status={acta.status} />
+            {pendingActas.map((acta) => {
+              const safeCosto = Number(acta?.costoDestruccion ?? 0);
+              return (
+                <div key={acta.id} className="flex items-center gap-4 px-5 py-4 hover:bg-slate-50 transition-colors">
+                  <div className="w-10 h-10 bg-amber-50 rounded-xl flex items-center justify-center shrink-0">
+                    <Clock size={18} className="text-amber-600" />
                   </div>
-                  <p className="text-sm text-slate-600 mt-0.5 truncate">{acta.descripcion}</p>
-                  <div className="flex gap-4 mt-1 text-xs text-slate-500">
-                    <span>Empresa: {acta.empresa}</span>
-                    <span>Solicitante: {acta.solicitanteNombre}</span>
-                    <span>Fecha: {acta.fecha}</span>
-                    <span>COP {acta.costoDestruccion.toLocaleString("es-CO")}</span>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm font-bold text-slate-900 font-mono">{acta.consecutivo || "—"}</p>
+                      <ActaStatusBadge status={acta.status} />
+                    </div>
+                    <p className="text-sm text-slate-600 mt-0.5 truncate">{acta.descripcion || "Sin descripción"}</p>
+                    <div className="flex gap-4 mt-1 text-xs text-slate-500">
+                      <span>Empresa: {acta.empresa || "—"}</span>
+                      <span>Solicitante: {acta.solicitanteNombre || "—"}</span>
+                      <span>Fecha: {acta.fecha || "—"}</span>
+                      <span>COP {safeCosto.toLocaleString("es-CO")}</span>
+                    </div>
                   </div>
+                  <button
+                    onClick={() => navigate(`/actas/${acta.id}`)}
+                    className="flex items-center gap-2 px-4 py-2 bg-blue-700 text-white text-sm font-medium rounded-lg hover:bg-blue-800 transition-colors shrink-0"
+                  >
+                    <Eye size={14} /> Revisar
+                  </button>
                 </div>
-                <button
-                  onClick={() => navigate(`/actas/${acta.id}`)}
-                  className="flex items-center gap-2 px-4 py-2 bg-blue-700 text-white text-sm font-medium rounded-lg hover:bg-blue-800 transition-colors shrink-0"
-                >
-                  <Eye size={14} /> Revisar
-                </button>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>

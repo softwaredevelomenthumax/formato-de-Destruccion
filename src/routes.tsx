@@ -13,6 +13,7 @@ import InvimaPage from "./pages/maestros/InvimaPage";
 import ReportsPage from "./pages/reports/ReportsPage";
 import SearchPage from "./pages/search/SearchPage";
 import NotificationsPage from "./pages/notifications/NotificationsPage";
+import ProfilePage from "./pages/profile/ProfilePage";
 import { RouteTransitionShell } from "./components/layout/RouteTransitionShell";
 
 export const router = createBrowserRouter([
@@ -30,6 +31,7 @@ export const router = createBrowserRouter([
           { path: "actas", Component: ActaListPage },
           { path: "actas/nueva", Component: ActaCreatePage },
           { path: "actas/:id", Component: ActaDetailPage },
+          { path: "actas/:id/editar", Component: ActaCreatePage },
           { path: "aprobaciones", Component: AprobacionesPage },
           { path: "usuarios", Component: UserManagementPage },
           { path: "maestros/cecos", Component: CecosPage },
@@ -37,6 +39,7 @@ export const router = createBrowserRouter([
           { path: "reportes", Component: ReportsPage },
           { path: "busqueda", Component: SearchPage },
           { path: "notificaciones", Component: NotificationsPage },
+          { path: "perfil", Component: ProfilePage },
         ],
       },
       { path: "*", element: <Navigate to="/dashboard" replace /> },

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Navigate } from "react-router";
 import { Package, Search, Plus, Edit2, Trash2, AlertCircle } from "lucide-react";
 import { useApp } from "../../context/AppContext";
 import { Modal, ConfirmModal } from "../../components/ui/Modal";
@@ -6,8 +7,10 @@ import { Badge } from "../../components/ui/Badge";
 import { EmptyState } from "../../components/ui/EmptyState";
 import type { InvimaProduct } from "../../types";
 import { toast } from "sonner";
+import { useAuth } from "../../context/AuthContext";
 
 export default function InvimaPage() {
+  const { user } = useAuth();
   const { invimaProducts, addInvimaProduct, updateInvimaProduct, deleteInvimaProduct } = useApp();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<"" | "Vigente" | "Vencido" | "Cancelado">("");
@@ -18,6 +21,8 @@ export default function InvimaPage() {
   const [form, setForm] = useState<Omit<InvimaProduct, "id">>({
     productName: "", registryNumber: "", internalStatus: "Vigente", holder: "Humax", tipoMedicamento: "", controlado: false, presentacion: ""
   });
+
+  if (user?.rol !== "planeacion") return <Navigate to="/dashboard" replace />;
 
   const filtered = invimaProducts.filter((p) => {
     const q = search.toLowerCase();
@@ -144,7 +149,7 @@ export default function InvimaPage() {
           </div>
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">Número de Registro *</label>
-            <input value={form.registryNumber} onChange={(e) => setForm((p) => ({ ...p, registryNumber: e.target.value }))} disabled={!!editItem} className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-50" />
+            <input value={form.registryNumber} onChange={(e) => setForm((p) => ({ ...p, registryNumber: e.target.value }))} disabled={!!editItem} className="w-full px-3 py-2 text-sm border border-blue-200 rounded-lg bg-blue-50 text-blue-800 font-medium cursor-not-allowed pointer-events-none focus:outline-none" />
           </div>
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">Estado Interno</label>

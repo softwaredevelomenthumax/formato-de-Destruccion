@@ -3,6 +3,7 @@ import {
   useContext,
   useState,
   useCallback,
+  useEffect,
   type ReactNode,
 } from "react";
 import type {
@@ -15,22 +16,8 @@ import type {
   ActaAprobacion,
   ActaHistorial,
 } from "../types";
-import {
-  INITIAL_USERS,
-  INITIAL_ACTAS,
-  INITIAL_NOTIFICATIONS,
-  INITIAL_SOLICITUDES,
-  INITIAL_INVIMA_PRODUCTS,
-  generateConsecutivo,
-} from "../data/mockData";
-
-function load<T>(key: string, fallback: T): T {
-  const s = localStorage.getItem(key);
-  return s ? JSON.parse(s) : fallback;
-}
-function save<T>(key: string, val: T) {
-  localStorage.setItem(key, JSON.stringify(val));
-}
+import { api } from "../services/api.ts";
+import { useAuth } from "./AuthContext";
 
 interface AppContextType {
   users: User[];
@@ -38,37 +25,44 @@ interface AppContextType {
   notifications: Notification[];
   solicitudes: RegistroSolicitud[];
   invimaProducts: InvimaProduct[];
+  loading: boolean;
 
   // Users
-  createUser: (u: Omit<User, "id" | "createdAt">) => void;
-  updateUser: (id: string, updates: Partial<User>) => void;
-  deleteUser: (id: string) => boolean;
-  approveSolicitud: (id: string) => void;
-  rejectSolicitud: (id: string) => void;
-  registerSolicitud: (s: Omit<RegistroSolicitud, "id" | "createdAt" | "status">) => void;
+  createUser: (u: Omit<User, "id" | "createdAt">) => Promise<void>;
+  updateUser: (id: string, updates: Partial<User>) => Promise<void>;
+  deleteUser: (id: string) => Promise<boolean>;
+  approveSolicitud: (id: string) => Promise<void>;
+  rejectSolicitud: (id: string) => Promise<void>;
+  registerSolicitud: (s: Omit<RegistroSolicitud, "id" | "createdAt" | "status">) => Promise<void>;
 
   // Actas
-  createActa: (acta: Omit<Acta, "id" | "consecutivo" | "createdAt" | "updatedAt" | "historial" | "aprobaciones" | "requiereCostos">) => Acta;
-  updateActa: (id: string, updates: Partial<Acta>, histEntry?: Omit<ActaHistorial, "id">) => void;
-  deleteActa: (id: string) => boolean;
-  sendActa: (id: string, userId: string, userName: string) => void;
-  approveActa: (actaId: string, paso: ActaAprobacion["paso"], aprobador: string, comentario: string) => void;
-  rejectActa: (actaId: string, paso: ActaAprobacion["paso"], aprobador: string, motivo: string) => void;
-  returnActa: (actaId: string, paso: ActaAprobacion["paso"], aprobador: string, ajustes: ActaAprobacion["ajustes"]) => void;
+  createActa: (acta: Omit<Acta, "id" | "consecutivo" | "createdAt" | "updatedAt" | "historial" | "aprobaciones" | "requiereCostos">) => Promise<Acta>;
+  updateActa: (id: string, updates: Partial<Acta>, histEntry?: Omit<ActaHistorial, "id">) => Promise<void>;
+  deleteActa: (id: string) => Promise<boolean>;
+  sendActa: (id: string, userId: string, userName: string) => Promise<void>;
+  approveActa: (actaId: string, paso: ActaAprobacion["paso"], aprobador: string, comentario: string) => Promise<void>;
+  rejectActa: (actaId: string, paso: ActaAprobacion["paso"], aprobador: string, motivo: string) => Promise<void>;
+  returnActa: (actaId: string, paso: ActaAprobacion["paso"], aprobador: string, ajustes: ActaAprobacion["ajustes"]) => Promise<void>;
 
   // Notifications
-  markNotificationRead: (id: string) => void;
-  markAllNotificationsRead: (userId: string) => void;
-  addNotification: (n: Omit<Notification, "id" | "createdAt">) => void;
+  markNotificationRead: (id: string) => Promise<void>;
+  markAllNotificationsRead: (userId: string) => Promise<void>;
+  addNotification: (n: Omit<Notification, "id" | "createdAt">) => Promise<void>;
   getUserNotifications: (userId: string) => Notification[];
+  loadNotifications: (userId: string) => Promise<void>;
 
   // INVIMA
-  addInvimaProduct: (p: Omit<InvimaProduct, "id">) => void;
-  updateInvimaProduct: (id: string, updates: Partial<InvimaProduct>) => void;
-  deleteInvimaProduct: (id: string) => void;
+  addInvimaProduct: (p: Omit<InvimaProduct, "id">) => Promise<void>;
+  updateInvimaProduct: (id: string, updates: Partial<InvimaProduct>) => Promise<void>;
+  deleteInvimaProduct: (id: string) => Promise<void>;
+  loadData: () => Promise<void>;
 }
 
 const AppContext = createContext<AppContextType | null>(null);
+
+function asArray<T>(value: unknown): T[] {
+  return Array.isArray(value) ? value as T[] : [];
+}
 
 function requiresCostos(acta: Partial<Acta>): boolean {
   const { clasificacion, fechaVencimiento, causal } = acta;
@@ -86,308 +80,355 @@ function requiresCostos(acta: Partial<Acta>): boolean {
 }
 
 export function AppProvider({ children }: { children: ReactNode }) {
-  const [users, setUsers] = useState<User[]>(() => load("add_users", INITIAL_USERS));
-  const [actas, setActas] = useState<Acta[]>(() => load("add_actas", INITIAL_ACTAS));
-  const [notifications, setNotifications] = useState<Notification[]>(() => load("add_notifications", INITIAL_NOTIFICATIONS));
-  const [solicitudes, setSolicitudes] = useState<RegistroSolicitud[]>(() => load("add_solicitudes", INITIAL_SOLICITUDES));
-  const [invimaProducts, setInvimaProducts] = useState<InvimaProduct[]>(() => load("add_invima", INITIAL_INVIMA_PRODUCTS));
+  const { token } = useAuth();
+  const [users, setUsers] = useState<User[]>([]);
+  const [actas, setActas] = useState<Acta[]>([]);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [solicitudes, setSolicitudes] = useState<RegistroSolicitud[]>([]);
+  const [invimaProducts, setInvimaProducts] = useState<InvimaProduct[]>([]);
+  const [loading, setLoading] = useState(false);
 
-  const persistUsers = (u: User[]) => { setUsers(u); save("add_users", u); };
-  const persistActas = (a: Acta[]) => { setActas(a); save("add_actas", a); };
-  const persistNotifications = (n: Notification[]) => { setNotifications(n); save("add_notifications", n); };
-  const persistSolicitudes = (s: RegistroSolicitud[]) => { setSolicitudes(s); save("add_solicitudes", s); };
-  const persistInvima = (p: InvimaProduct[]) => { setInvimaProducts(p); save("add_invima", p); };
+  // Cargar datos iniciales
+  const loadData = useCallback(async () => {
+    try {
+      setLoading(true);
+      const [usersData, actasData, solicitudesData, invimaData] = await Promise.all([
+        api.getUsers(),
+        api.getActas(),
+        api.getSolicitudes(),
+        api.getInvimaProducts(),
+      ]);
 
-  const now = () => new Date().toISOString();
-  const nowDate = () => new Date().toISOString().split("T")[0];
-  const nowTime = () => new Date().toTimeString().slice(0, 5);
-
-  const addNotification = useCallback((n: Omit<Notification, "id" | "createdAt">) => {
-    setNotifications((prev) => {
-      const next = [{ ...n, id: `n${Date.now()}`, createdAt: now() }, ...prev];
-      save("add_notifications", next);
-      return next;
-    });
+      setUsers(asArray<User>(usersData));
+      setActas(asArray<Acta>(actasData));
+      setSolicitudes(asArray<RegistroSolicitud>(solicitudesData));
+      setInvimaProducts(asArray<InvimaProduct>(invimaData));
+    } catch (error) {
+      console.error("Error cargando datos:", error);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
+  // Cargar datos al montar
+  useEffect(() => {
+    if (token) {
+      loadData();
+      return;
+    }
+
+    setUsers([]);
+    setActas([]);
+    setSolicitudes([]);
+    setInvimaProducts([]);
+  }, [loadData, token]);
+
   // Users
-  const createUser = (u: Omit<User, "id" | "createdAt">) => {
-    const next = [...users, { ...u, id: `u${Date.now()}`, createdAt: now() }];
-    persistUsers(next);
+  const createUser = async (u: Omit<User, "id" | "createdAt">) => {
+    try {
+      const newUser = await api.createUser(u);
+      setUsers((current) => [...asArray<User>(current), newUser]);
+    } catch (error) {
+      console.error("Error creando usuario:", error);
+      throw error;
+    }
   };
 
-  const updateUser = (id: string, updates: Partial<User>) => {
-    persistUsers(users.map((u) => (u.id === id ? { ...u, ...updates } : u)));
+  const updateUser = async (id: string, updates: Partial<User>) => {
+    try {
+      await api.updateUser(id, updates);
+      setUsers((current) => asArray<User>(current).map((u) => (u.id === id ? { ...u, ...updates } : u)));
+    } catch (error) {
+      console.error("Error actualizando usuario:", error);
+      throw error;
+    }
   };
 
-  const deleteUser = (id: string): boolean => {
-    const hasActas = actas.some(
-      (a) => a.solicitanteId === id && !["cerrada", "rechazada"].includes(a.status)
-    );
-    if (hasActas) return false;
-    persistUsers(users.filter((u) => u.id !== id));
-    return true;
+  const deleteUser = async (id: string): Promise<boolean> => {
+    try {
+      await api.deleteUser(id);
+      setUsers((current) => asArray<User>(current).filter((u) => u.id !== id));
+      return true;
+    } catch (error) {
+      console.error("Error eliminando usuario:", error);
+      return false;
+    }
   };
 
-  const registerSolicitud = (s: Omit<RegistroSolicitud, "id" | "createdAt" | "status">) => {
-    const next = [
-      ...solicitudes,
-      { ...s, id: `s${Date.now()}`, status: "pendiente" as const, createdAt: now() },
-    ];
-    persistSolicitudes(next);
+  const registerSolicitud = async (s: Omit<RegistroSolicitud, "id" | "createdAt" | "status">) => {
+    try {
+      const newSolicitud = await api.createSolicitud(s);
+      setSolicitudes((current) => [...asArray<RegistroSolicitud>(current), newSolicitud]);
+    } catch (error) {
+      console.error("Error registrando solicitud:", error);
+      throw error;
+    }
   };
 
-  const approveSolicitud = (id: string) => {
-    const sol = solicitudes.find((s) => s.id === id);
-    if (!sol) return;
-    const newUser: User = {
-      id: `u${Date.now()}`,
-      username: sol.username,
-      password: "Humax2024*",
-      nombre: sol.nombre,
-      area: sol.area,
-      rol: sol.rolSolicitado,
-      email: sol.email,
-      status: "activo",
-      createdAt: now(),
-    };
-    persistUsers([...users, newUser]);
-    persistSolicitudes(solicitudes.map((s) => s.id === id ? { ...s, status: "aprobado" as const } : s));
+  const approveSolicitud = async (id: string) => {
+    try {
+      await api.approveSolicitud(id);
+      // Recargar usuarios después de aprobar
+      const usersData = await api.getUsers();
+      setUsers(asArray<User>(usersData));
+      setSolicitudes((current) => asArray<RegistroSolicitud>(current).map((s) => s.id === id ? { ...s, status: "aprobado" as const } : s));
+    } catch (error) {
+      console.error("Error aprobando solicitud:", error);
+      throw error;
+    }
   };
 
-  const rejectSolicitud = (id: string) => {
-    persistSolicitudes(solicitudes.map((s) => s.id === id ? { ...s, status: "rechazado" as const } : s));
+  const rejectSolicitud = async (id: string) => {
+    try {
+      await api.rejectSolicitud(id);
+      setSolicitudes((current) => asArray<RegistroSolicitud>(current).map((s) => s.id === id ? { ...s, status: "rechazado" as const } : s));
+    } catch (error) {
+      console.error("Error rechazando solicitud:", error);
+      throw error;
+    }
   };
 
   // Actas
-  const createActa = (acta: Omit<Acta, "id" | "consecutivo" | "createdAt" | "updatedAt" | "historial" | "aprobaciones" | "requiereCostos">): Acta => {
-    const rc = requiresCostos(acta);
-    const newActa: Acta = {
-      ...acta,
-      id: `a${Date.now()}`,
-      consecutivo: generateConsecutivo(actas),
-      requiereCostos: rc,
-      historial: [{
-        id: `h${Date.now()}`,
-        usuario: acta.solicitanteNombre,
-        fecha: nowDate(),
-        hora: nowTime(),
-        equipo: "WEB",
-        accion: acta.status === "borrador" ? "Borrador guardado" : "Acta creada",
-      }],
-      aprobaciones: [
-        { paso: "area", status: "pendiente" },
-        { paso: "costos", status: rc ? "pendiente" : "no_aplica" },
-        { paso: "hse", status: "pendiente" },
-      ],
-      createdAt: now(),
-      updatedAt: now(),
-    };
-    const next = [...actas, newActa];
-    persistActas(next);
-    return newActa;
-  };
-
-  const updateActa = (id: string, updates: Partial<Acta>, histEntry?: Omit<ActaHistorial, "id">) => {
-    persistActas(actas.map((a) => {
-      if (a.id !== id) return a;
-      const hist = histEntry
-        ? [...a.historial, { ...histEntry, id: `h${Date.now()}` }]
-        : a.historial;
-      return { ...a, ...updates, historial: hist, updatedAt: now() };
-    }));
-  };
-
-  const deleteActa = (id: string): boolean => {
-    const acta = actas.find((a) => a.id === id);
-    if (!acta || acta.status === "cerrada") return false;
-    persistActas(actas.filter((a) => a.id !== id));
-    return true;
-  };
-
-  const sendActa = (id: string, userId: string, userName: string) => {
-    const acta = actas.find((a) => a.id === id);
-    if (!acta) return;
-    const rc = requiresCostos(acta);
-    const newStatus: ActaStatus = "pendiente_aprobacion_area";
-    updateActa(id, {
-      status: newStatus,
-      requiereCostos: rc,
-      aprobaciones: [
-        { paso: "area", status: "pendiente" },
-        { paso: "costos", status: rc ? "pendiente" : "no_aplica" },
-        { paso: "hse", status: "pendiente" },
-      ],
-    }, {
-      usuario: userName,
-      fecha: nowDate(),
-      hora: nowTime(),
-      equipo: "WEB",
-      accion: "Acta enviada a aprobación",
-    });
-
-    // notify aprobadores area
-    users.filter((u) => u.rol === "aprobador_area" && u.status === "activo").forEach((u) => {
-      addNotification({
-        userId: u.id,
-        title: "Nueva acta pendiente de aprobación",
-        message: `El acta ${acta.consecutivo} requiere su aprobación de área.`,
-        type: "info",
-        read: false,
-        actaId: id,
-      });
-    });
-  };
-
-  const approveActa = (actaId: string, paso: ActaAprobacion["paso"], aprobador: string, comentario: string) => {
-    const acta = actas.find((a) => a.id === actaId);
-    if (!acta) return;
-
-    const updatedAprobaciones = acta.aprobaciones.map((ap) =>
-      ap.paso === paso
-        ? { ...ap, status: "aprobado" as const, aprobador, fechaAprobacion: now(), comentario }
-        : ap
-    );
-
-    let nextStatus: ActaStatus = acta.status;
-
-    if (paso === "area") {
-      nextStatus = acta.requiereCostos ? "pendiente_costos" : "pendiente_hse";
-      const targetRole = acta.requiereCostos ? "costos" : "hse";
-      users.filter((u) => u.rol === targetRole && u.status === "activo").forEach((u) => {
-        addNotification({
-          userId: u.id,
-          title: "Acta pendiente de revisión",
-          message: `El acta ${acta.consecutivo} requiere su revisión.`,
-          type: "info",
-          read: false,
-          actaId: actaId,
-        });
-      });
-    } else if (paso === "costos") {
-      nextStatus = "pendiente_hse";
-      users.filter((u) => u.rol === "hse" && u.status === "activo").forEach((u) => {
-        addNotification({
-          userId: u.id,
-          title: "Acta pendiente de aprobación HSE",
-          message: `El acta ${acta.consecutivo} requiere su aprobación final.`,
-          type: "info",
-          read: false,
-          actaId: actaId,
-        });
-      });
-    } else if (paso === "hse") {
-      nextStatus = "aprobada";
-      addNotification({
-        userId: acta.solicitanteId,
-        title: "Acta aprobada",
-        message: `Su acta ${acta.consecutivo} ha sido completamente aprobada.`,
-        type: "success",
-        read: false,
-        actaId: actaId,
-      });
+  const createActa = async (acta: Omit<Acta, "id" | "consecutivo" | "createdAt" | "updatedAt" | "historial" | "aprobaciones" | "requiereCostos">): Promise<Acta> => {
+    try {
+      const rc = requiresCostos(acta);
+      const newActa = await api.createActa({ ...acta, requiereCostos: rc });
+      setActas((current) => [...asArray<Acta>(current), newActa]);
+      return newActa;
+    } catch (error) {
+      console.error("Error creando acta:", error);
+      throw error;
     }
-
-    updateActa(actaId, { status: nextStatus, aprobaciones: updatedAprobaciones }, {
-      usuario: aprobador,
-      fecha: nowDate(),
-      hora: nowTime(),
-      equipo: "WEB",
-      accion: `Aprobación ${paso.toUpperCase()}`,
-    });
   };
 
-  const rejectActa = (actaId: string, paso: ActaAprobacion["paso"], aprobador: string, motivo: string) => {
-    const acta = actas.find((a) => a.id === actaId);
-    if (!acta) return;
-
-    const updatedAprobaciones = acta.aprobaciones.map((ap) =>
-      ap.paso === paso
-        ? { ...ap, status: "rechazado" as const, aprobador, fechaAprobacion: now(), motivoRechazo: motivo }
-        : ap
-    );
-
-    updateActa(actaId, { status: "rechazada", aprobaciones: updatedAprobaciones }, {
-      usuario: aprobador,
-      fecha: nowDate(),
-      hora: nowTime(),
-      equipo: "WEB",
-      accion: `Rechazo ${paso.toUpperCase()} - Motivo: ${motivo.slice(0, 80)}`,
-    });
-
-    addNotification({
-      userId: acta.solicitanteId,
-      title: "Acta rechazada",
-      message: `Su acta ${acta.consecutivo} fue rechazada. Motivo: ${motivo.slice(0, 100)}`,
-      type: "error",
-      read: false,
-      actaId: actaId,
-    });
+  const updateActa = async (id: string, updates: Partial<Acta>, histEntry?: Omit<ActaHistorial, "id">) => {
+    try {
+      await api.updateActa(id, updates);
+      setActas((current) => asArray<Acta>(current).map((a) => a.id === id ? { ...a, ...updates } : a));
+    } catch (error) {
+      console.error("Error actualizando acta:", error);
+      throw error;
+    }
   };
 
-  const returnActa = (actaId: string, paso: ActaAprobacion["paso"], aprobador: string, ajustes: ActaAprobacion["ajustes"]) => {
-    const acta = actas.find((a) => a.id === actaId);
-    if (!acta) return;
+  const deleteActa = async (id: string): Promise<boolean> => {
+    try {
+      await api.deleteActa(id);
+      setActas((current) => asArray<Acta>(current).filter((a) => a.id !== id));
+      return true;
+    } catch (error) {
+      console.error("Error eliminando acta:", error);
+      return false;
+    }
+  };
 
-    const updatedAprobaciones = acta.aprobaciones.map((ap) =>
-      ap.paso === paso
-        ? { ...ap, status: "devuelto" as const, aprobador, fechaAprobacion: now(), ajustes }
-        : ap
-    );
+  const sendActa = async (id: string, userId: string, userName: string) => {
+    try {
+      const acta = actas.find((a) => a.id === id);
+      if (!acta) return;
+      
+      const rc = requiresCostos(acta);
+      const newStatus: ActaStatus = "pendiente_aprobacion_area";
+      
+      await updateActa(id, {
+        status: newStatus,
+        requiereCostos: rc,
+        aprobaciones: [
+          { paso: "area", status: "pendiente" },
+          { paso: "costos", status: rc ? "pendiente" : "no_aplica" },
+          { paso: "hse", status: "pendiente" },
+        ],
+      });
 
-    updateActa(actaId, { status: "devuelta_ajustes", aprobaciones: updatedAprobaciones }, {
-      usuario: aprobador,
-      fecha: nowDate(),
-      hora: nowTime(),
-      equipo: "WEB",
-      accion: `Devolución para ajustes - ${paso.toUpperCase()}`,
-    });
+      // Notificar aprobadores de área
+      const areaAprobadores = users.filter((u) => u.rol === "aprobador_area" && u.status === "activo");
+      for (const u of areaAprobadores) {
+        await addNotification({
+          userId: u.id,
+          title: "Nueva acta pendiente de aprobación",
+          message: `El acta ${acta.consecutivo} requiere su aprobación de área.`,
+          type: "info",
+          read: false,
+        });
+      }
+    } catch (error) {
+      console.error("Error enviando acta:", error);
+      throw error;
+    }
+  };
 
-    addNotification({
-      userId: acta.solicitanteId,
-      title: "Acta devuelta para ajustes",
-      message: `Su acta ${acta.consecutivo} requiere correcciones. Revise los comentarios del aprobador.`,
-      type: "warning",
-      read: false,
-      actaId: actaId,
-    });
+  const approveActa = async (actaId: string, paso: ActaAprobacion["paso"], aprobador: string, comentario: string) => {
+    try {
+      const acta = actas.find((a) => a.id === actaId);
+      if (!acta) return;
+
+      await api.approveActa(actaId, { paso, aprobador, comentario });
+
+      // Actualizar estado local
+      let nextStatus: ActaStatus = acta.status;
+      const updatedAprobaciones = acta.aprobaciones.map((ap) =>
+        ap.paso === paso ? { ...ap, status: "aprobado" as const } : ap
+      );
+
+      if (paso === "area") {
+        nextStatus = acta.requiereCostos ? "pendiente_costos" : "pendiente_hse";
+      } else if (paso === "costos") {
+        nextStatus = "pendiente_hse";
+      } else if (paso === "hse") {
+        nextStatus = "aprobada";
+      }
+
+      setActas((current) => asArray<Acta>(current).map((a) =>
+        a.id === actaId ? { ...a, status: nextStatus, aprobaciones: updatedAprobaciones } : a
+      ));
+    } catch (error) {
+      console.error("Error aprobando acta:", error);
+      throw error;
+    }
+  };
+
+  const rejectActa = async (actaId: string, paso: ActaAprobacion["paso"], aprobador: string, motivo: string) => {
+    try {
+      const acta = actas.find((a) => a.id === actaId);
+      if (!acta) return;
+
+      await api.rejectActa(actaId, { paso, aprobador, motivo });
+
+      const updatedAprobaciones = acta.aprobaciones.map((ap) =>
+        ap.paso === paso ? { ...ap, status: "rechazado" as const } : ap
+      );
+
+      setActas((current) => asArray<Acta>(current).map((a) =>
+        a.id === actaId ? { ...a, status: "rechazada", aprobaciones: updatedAprobaciones } : a
+      ));
+
+      // Notificar al solicitante
+      await addNotification({
+        userId: acta.solicitanteId,
+        title: "Acta rechazada",
+        message: `Su acta ${acta.consecutivo} fue rechazada.`,
+        type: "error",
+        read: false,
+      });
+    } catch (error) {
+      console.error("Error rechazando acta:", error);
+      throw error;
+    }
+  };
+
+  const returnActa = async (actaId: string, paso: ActaAprobacion["paso"], aprobador: string, ajustes: ActaAprobacion["ajustes"]) => {
+    try {
+      const acta = actas.find((a) => a.id === actaId);
+      if (!acta) return;
+
+      await api.updateActa(actaId, { status: "devuelta_ajustes" });
+
+      const updatedAprobaciones = acta.aprobaciones.map((ap) =>
+        ap.paso === paso ? { ...ap, status: "devuelto" as const } : ap
+      );
+
+      setActas((current) => asArray<Acta>(current).map((a) =>
+        a.id === actaId ? { ...a, status: "devuelta_ajustes", aprobaciones: updatedAprobaciones } : a
+      ));
+
+      // Notificar al solicitante
+      await addNotification({
+        userId: acta.solicitanteId,
+        title: "Acta devuelta para ajustes",
+        message: `Su acta ${acta.consecutivo} requiere correcciones.`,
+        type: "warning",
+        read: false,
+      });
+    } catch (error) {
+      console.error("Error devolviendo acta:", error);
+      throw error;
+    }
   };
 
   // Notifications
-  const markNotificationRead = (id: string) => {
-    persistNotifications(notifications.map((n) => n.id === id ? { ...n, read: true } : n));
+  const loadNotifications = async (userId: string) => {
+    try {
+      const data = await api.getNotifications(userId);
+      setNotifications(asArray<Notification>(data));
+    } catch (error) {
+      console.error("Error cargando notificaciones:", error);
+    }
   };
 
-  const markAllNotificationsRead = (userId: string) => {
-    persistNotifications(notifications.map((n) => n.userId === userId ? { ...n, read: true } : n));
+  const markNotificationRead = async (id: string) => {
+    try {
+      await api.markNotificationRead(id);
+      setNotifications((current) => asArray<Notification>(current).map((n) => n.id === id ? { ...n, read: true } : n));
+    } catch (error) {
+      console.error("Error marcando notificación como leída:", error);
+      throw error;
+    }
+  };
+
+  const markAllNotificationsRead = async (userId: string) => {
+    try {
+      await api.markAllNotificationsRead(userId);
+      setNotifications((current) => asArray<Notification>(current).map((n) => n.userId === userId ? { ...n, read: true } : n));
+    } catch (error) {
+      console.error("Error marcando notificaciones como leídas:", error);
+      throw error;
+    }
+  };
+
+  const addNotification = async (n: Omit<Notification, "id" | "createdAt">) => {
+    try {
+      const newNotification = await api.createNotification(n);
+      setNotifications((current) => [newNotification, ...asArray<Notification>(current)]);
+    } catch (error) {
+      console.error("Error creando notificación:", error);
+      throw error;
+    }
   };
 
   const getUserNotifications = useCallback((userId: string) => {
-    return notifications.filter((n) => n.userId === userId).sort(
-      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-    );
+    return asArray<Notification>(notifications)
+      .filter((n) => n.userId === userId)
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   }, [notifications]);
 
   // INVIMA
-  const addInvimaProduct = (p: Omit<InvimaProduct, "id">) => {
-    persistInvima([...invimaProducts, { ...p, id: `inv${Date.now()}` }]);
+  const addInvimaProduct = async (p: Omit<InvimaProduct, "id">) => {
+    try {
+      const newProduct = await api.createInvimaProduct(p);
+      setInvimaProducts((current) => [...asArray<InvimaProduct>(current), newProduct]);
+    } catch (error) {
+      console.error("Error creando producto INVIMA:", error);
+      throw error;
+    }
   };
 
-  const updateInvimaProduct = (id: string, updates: Partial<InvimaProduct>) => {
-    persistInvima(invimaProducts.map((p) => p.id === id ? { ...p, ...updates } : p));
+  const updateInvimaProduct = async (id: string, updates: Partial<InvimaProduct>) => {
+    try {
+      await api.updateInvimaProduct(id, updates);
+      setInvimaProducts((current) => asArray<InvimaProduct>(current).map((p) => p.id === id ? { ...p, ...updates } : p));
+    } catch (error) {
+      console.error("Error actualizando producto INVIMA:", error);
+      throw error;
+    }
   };
 
-  const deleteInvimaProduct = (id: string) => {
-    persistInvima(invimaProducts.filter((p) => p.id !== id));
+  const deleteInvimaProduct = async (id: string) => {
+    try {
+      await api.deleteInvimaProduct(id);
+      setInvimaProducts((current) => asArray<InvimaProduct>(current).filter((p) => p.id !== id));
+    } catch (error) {
+      console.error("Error eliminando producto INVIMA:", error);
+      throw error;
+    }
   };
 
   return (
     <AppContext.Provider value={{
-      users, actas, notifications, solicitudes, invimaProducts,
+      users, actas, notifications, solicitudes, invimaProducts, loading,
       createUser, updateUser, deleteUser, registerSolicitud, approveSolicitud, rejectSolicitud,
       createActa, updateActa, deleteActa, sendActa, approveActa, rejectActa, returnActa,
-      markNotificationRead, markAllNotificationsRead, addNotification, getUserNotifications,
-      addInvimaProduct, updateInvimaProduct, deleteInvimaProduct,
+      markNotificationRead, markAllNotificationsRead, addNotification, getUserNotifications, loadNotifications,
+      addInvimaProduct, updateInvimaProduct, deleteInvimaProduct, loadData,
     }}>
       {children}
     </AppContext.Provider>

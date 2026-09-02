@@ -56,6 +56,7 @@ export interface User {
 }
 
 export interface Ceco {
+  id?: string;
   empresaCode: string;
   empresa: Empresa;
   ceco: string;

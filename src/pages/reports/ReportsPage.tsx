@@ -8,6 +8,11 @@ import type { ActaStatus, Empresa } from "../../types";
 
 const COLORS = ["#1D4ED8", "#16A34A", "#D97706", "#DC2626", "#7C3AED", "#0284C7", "#0F766E", "#9333EA"];
 
+function numericValue(value: unknown): number {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : 0;
+}
+
 export default function ReportsPage() {
   const { actas } = useApp();
   const [fechaDesde, setFechaDesde] = useState("");
@@ -24,14 +29,14 @@ export default function ReportsPage() {
     return list;
   }, [actas, fechaDesde, fechaHasta, empresaFilter, statusFilter]);
 
-  const totalCosto = filtered.reduce((acc, a) => acc + a.costoDestruccion, 0);
-  const totalPeso = filtered.reduce((acc, a) => acc + a.pesoKg, 0);
-  const totalUnidades = filtered.reduce((acc, a) => acc + a.cantidadUnidades, 0);
+  const totalCosto = filtered.reduce((acc, a) => acc + numericValue(a.costoDestruccion), 0);
+  const totalPeso = filtered.reduce((acc, a) => acc + numericValue(a.pesoKg), 0);
+  const totalUnidades = filtered.reduce((acc, a) => acc + numericValue(a.cantidadUnidades), 0);
 
   const byEmpresa = EMPRESAS.map((e) => ({
     name: e,
     total: filtered.filter((a) => a.empresa === e).length,
-    costo: filtered.filter((a) => a.empresa === e).reduce((s, a) => s + a.costoDestruccion, 0),
+    costo: filtered.filter((a) => a.empresa === e).reduce((s, a) => s + numericValue(a.costoDestruccion), 0),
   }));
 
   const byCausal = Object.entries(CAUSAL_LABELS).map(([k, v]) => ({
@@ -197,8 +202,8 @@ export default function ReportsPage() {
                   <td className="px-4 py-2.5 text-slate-600 text-xs">{a.empresa}</td>
                   <td className="px-4 py-2.5 text-slate-800 max-w-xs truncate">{a.descripcion}</td>
                   <td className="px-4 py-2.5 text-slate-500 text-xs">{CAUSAL_LABELS[a.causal]}</td>
-                  <td className="px-4 py-2.5 text-right text-slate-700">{a.pesoKg}</td>
-                  <td className="px-4 py-2.5 text-right text-slate-700">COP {a.costoDestruccion.toLocaleString("es-CO")}</td>
+                  <td className="px-4 py-2.5 text-right text-slate-700">{numericValue(a.pesoKg)}</td>
+                  <td className="px-4 py-2.5 text-right text-slate-700">COP {numericValue(a.costoDestruccion).toLocaleString("es-CO")}</td>
                   <td className="px-4 py-2.5"><ActaStatusBadge status={a.status} /></td>
                 </tr>
               ))}
