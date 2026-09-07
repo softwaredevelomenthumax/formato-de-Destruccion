@@ -105,7 +105,7 @@ export function Sidebar() {
   return (
     <aside
       className={`${collapsed ? "w-[68px]" : "w-60"} relative flex h-full shrink-0 flex-col
-        bg-white dark:bg-slate-900 transition-[width] duration-200 ease-in-out`}
+        bg-slate-950 dark:bg-slate-950 transition-[width] duration-200 ease-in-out shadow-[8px_0_30px_rgba(15,23,42,0.12)]`}
     >
       {/* Botón de colapsar */}
       <button
@@ -120,14 +120,14 @@ export function Sidebar() {
       </button>
 
       {/* Logo */}
-      <div className={`flex items-center border-b border-slate-200 dark:border-slate-800 ${collapsed ? "justify-center px-2 py-5" : "px-5 py-5"}`}>
+      <div className={`flex items-center border-b border-slate-800 ${collapsed ? "justify-center px-2 py-5" : "px-5 py-5"}`}>
         <div className="flex min-w-0 items-center gap-2.5">
-          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-600">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-teal-400 shadow-[0_0_20px_rgba(45,212,191,0.25)]">
             <img src={logi} alt="Logo" className="h-6 w-6" />
           </div>
           {!collapsed && (
             <div className="min-w-0">
-              <p className="truncate text-sm font-bold leading-tight text-slate-900 dark:text-white">Sistema ADD</p>
+              <p className="truncate text-sm font-bold leading-tight text-white">Sistema ADD</p>
             </div>
           )}
         </div>
@@ -146,8 +146,8 @@ export function Sidebar() {
                 collapsed ? "justify-center px-2 py-2.5" : "px-3 py-2.5"
               } ${
                 isActive
-                  ? "bg-blue-600 text-white"
-                  : "text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white"
+                  ? "bg-teal-400 text-slate-950 shadow-[0_8px_18px_rgba(45,212,191,0.18)]"
+                  : "text-slate-400 hover:bg-slate-800 hover:text-white"
               }`
             }
           >
@@ -175,8 +175,8 @@ export function Sidebar() {
               collapsed ? "justify-center px-2 py-2.5" : "px-3 py-2.5"
             } ${
               isActive
-                ? "bg-blue-600 text-white"
-                : "text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white"
+                ? "bg-teal-400 text-slate-950 shadow-[0_8px_18px_rgba(45,212,191,0.18)]"
+                : "text-slate-400 hover:bg-slate-800 hover:text-white"
             }`
           }
         >

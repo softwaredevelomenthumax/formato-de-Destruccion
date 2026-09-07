@@ -14,7 +14,7 @@ import { Modal } from "../../components/ui/Modal";
 import {
   CLASIFICACION_LABELS, CAUSAL_LABELS, CAUSAL_DESCRIPTIONS, EMPRESAS, AREAS
 } from "../../constants";
-import type { CausalDestruccion, Ceco, Empresa } from "../../types";
+import type { CausalDestruccion, Ceco, Empresa, InvimaProduct, SapCode } from "../../types";
 import { api } from "../../services/api.ts";
 import { toast } from "sonner";
 
@@ -167,6 +167,7 @@ function DateField({
 const step1Schema = z.object({
   empresa: z.enum(["Humax", "Farmatech", "Cambridge"]),
   centroCostos: requiredString("Centro de costos").refine((value) => value.trim().length > 0, "Seleccione un centro de costos"),
+  cecoId: z.string().optional(),
   fecha: dateStringSchema,
   responsable: requiredString("Responsable"),
   area: requiredString("Área"),
@@ -191,6 +192,8 @@ const step2Schema = z.object({
       message: "La fecha debe tener el formato DD/MM/YYYY",
     }),
   registroINVIMA: requiredString("Registro INVIMA"),
+  invimaProductId: z.string().optional(),
+  sapCodeId: z.string().optional(),
   otraClasificacion: z.string().optional(),
 });
 const numberField = (label: string, maxValue: number, integer = false) =>
@@ -285,6 +288,10 @@ export default function ActaCreatePage() {
   const [selectedEmpresa, setSelectedEmpresa] = useState<Empresa>("Humax");
   const [invimaSearch, setInvimaSearch] = useState("");
   const [showInvimaDropdown, setShowInvimaDropdown] = useState(false);
+  const [showInvimaModal, setShowInvimaModal] = useState(false);
+  const [sapCodes, setSapCodes] = useState<SapCode[]>([]);
+  const [sapSearch, setSapSearch] = useState("");
+  const [showSapModal, setShowSapModal] = useState(false);
   const [cecos, setCecos] = useState<Ceco[]>([]);
   const [cecoSearch, setCecoSearch] = useState("");
   const [showCecoModal, setShowCecoModal] = useState(false);
@@ -452,23 +459,37 @@ export default function ActaCreatePage() {
 
   const selectCeco = (ceco: Ceco) => {
     form1.setValue("centroCostos", `${ceco.ceco} - ${ceco.denominacion}`, { shouldValidate: true, shouldDirty: true });
+    form1.setValue("cecoId", ceco.id, { shouldDirty: true });
     setShowCecoModal(false);
     setCecoSearch("");
   };
 
   const filteredInvima = invimaProducts.filter((p) =>
-    p.internalStatus === "Vigente" &&
+    p.internalStatus === "Vigente" && (!p.empresa || p.empresa === empresaWatch) &&
     (p.productName.toLowerCase().includes(invimaSearch.toLowerCase()) ||
      p.registryNumber.toLowerCase().includes(invimaSearch.toLowerCase()))
   );
 
-  const selectInvima = (product: typeof invimaProducts[0]) => {
+  const selectInvima = async (product: InvimaProduct) => {
+    form2.setValue("invimaProductId", product.id);
     form2.setValue("registroINVIMA", product.registryNumber);
     form2.setValue("descripcion", `${product.productName}${product.presentacion ? " - " + product.presentacion : ""}`);
     form2.setValue("sustanciaControlada", product.controlado);
     setInvimaSearch(product.registryNumber);
     setShowInvimaDropdown(false);
+    setShowInvimaModal(false);
+    const codes = await api.getSapCodes(`empresaCode=${encodeURIComponent(product.empresaCode || "")}&invimaProductId=${encodeURIComponent(product.id)}`);
+    setSapCodes(Array.isArray(codes) ? codes as SapCode[] : []);
+    if (Array.isArray(codes) && codes.length === 1) {
+      form2.setValue("codigoSAP", codes[0].codigo, { shouldValidate: true });
+      form2.setValue("sapCodeId", codes[0].id);
+    }
   };
+
+  const filteredSapCodes = sapCodes.filter((sap) => {
+    const query = sapSearch.toLowerCase().trim();
+    return !query || [sap.codigo, sap.descripcion || "", sap.presentacion || ""].some((value) => value.toLowerCase().includes(query));
+  });
 
   const onStep1 = form1.handleSubmit((data) => {
     if (!isEditing) {
@@ -516,6 +537,8 @@ export default function ActaCreatePage() {
           clasificacion: data.clasificacion || "otro",
           fechaVencimiento: data.fechaVencimiento || "",
           registroINVIMA: data.registroINVIMA || "",
+          invimaProductId: data.invimaProductId,
+          sapCodeId: data.sapCodeId,
           pesoKg: data.pesoKg || 0,
           cantidadUnidades: data.cantidadUnidades || 0,
           costoDestruccion: data.costoDestruccion || 0,
@@ -534,6 +557,7 @@ export default function ActaCreatePage() {
       status: "borrador",
       empresa: data.empresa || "Humax",
       centroCostos: data.centroCostos || "",
+      cecoId: data.cecoId,
       fecha: data.fecha || "",
       solicitanteId: user.id,
       solicitanteNombre: user.nombre,
@@ -547,6 +571,8 @@ export default function ActaCreatePage() {
       clasificacion: data.clasificacion || "otro",
       fechaVencimiento: data.fechaVencimiento || "",
       registroINVIMA: data.registroINVIMA || "",
+      invimaProductId: data.invimaProductId,
+      sapCodeId: data.sapCodeId,
       pesoKg: data.pesoKg || 0,
       cantidadUnidades: data.cantidadUnidades || 0,
       costoDestruccion: data.costoDestruccion || 0,
@@ -577,6 +603,8 @@ export default function ActaCreatePage() {
           clasificacion: data.clasificacion || "otro",
           fechaVencimiento: data.fechaVencimiento || "",
           registroINVIMA: data.registroINVIMA || "",
+          invimaProductId: data.invimaProductId,
+          sapCodeId: data.sapCodeId,
           pesoKg: data.pesoKg || 0,
           cantidadUnidades: data.cantidadUnidades || 0,
           costoDestruccion: data.costoDestruccion || 0,
@@ -595,6 +623,7 @@ export default function ActaCreatePage() {
       status: "enviada",
       empresa: data.empresa || "Humax",
       centroCostos: data.centroCostos || "",
+      cecoId: data.cecoId,
       fecha: data.fecha || "",
       solicitanteId: user.id,
       solicitanteNombre: user.nombre,
@@ -608,6 +637,8 @@ export default function ActaCreatePage() {
       clasificacion: data.clasificacion || "otro",
       fechaVencimiento: data.fechaVencimiento || "",
       registroINVIMA: data.registroINVIMA || "",
+      invimaProductId: data.invimaProductId,
+      sapCodeId: data.sapCodeId,
       pesoKg: data.pesoKg || 0,
       cantidadUnidades: data.cantidadUnidades || 0,
       costoDestruccion: data.costoDestruccion || 0,
@@ -666,6 +697,7 @@ export default function ActaCreatePage() {
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Centro de Costos *</label>
                 <input type="hidden" {...form1.register("centroCostos")} />
+                <input type="hidden" {...form1.register("cecoId")} />
                 <button
                   type="button"
                   disabled={isGeneralInfoLocked || !empresaWatch}
@@ -735,6 +767,35 @@ export default function ActaCreatePage() {
         </div>
       )}
 
+      <Modal open={showInvimaModal} onClose={() => setShowInvimaModal(false)} title={`Seleccionar producto INVIMA · ${empresaWatch}`} size="lg">
+        <div className="space-y-4">
+          <div className="relative">
+            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input autoFocus value={invimaSearch} onChange={(event) => setInvimaSearch(event.target.value)} placeholder="Buscar por registro, producto o titular..." className="w-full pl-9 pr-3 py-2.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+          </div>
+          <p className="text-xs text-slate-500">{filteredInvima.length} productos vigentes de {empresaWatch}</p>
+          <div className="max-h-[50vh] overflow-auto border border-slate-200 rounded-lg">
+            <table className="min-w-[680px] w-full text-sm">
+              <thead className="sticky top-0 bg-slate-50 border-b border-slate-200"><tr>
+                <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-slate-500">Registro</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-slate-500">Producto</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-slate-500">Presentación</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-slate-500">Titular</th>
+              </tr></thead>
+              <tbody className="divide-y divide-slate-100">
+                {filteredInvima.map((product) => <tr key={product.id} onClick={() => selectInvima(product)} className="cursor-pointer hover:bg-blue-50">
+                  <td className="px-4 py-3 font-mono text-xs font-semibold text-blue-700">{product.registryNumber}</td>
+                  <td className="px-4 py-3 font-medium text-slate-800">{product.productName}</td>
+                  <td className="px-4 py-3 text-slate-600">{product.presentacion || "Sin presentación"}</td>
+                  <td className="px-4 py-3 text-slate-500">{product.holder}</td>
+                </tr>)}
+              </tbody>
+            </table>
+            {filteredInvima.length === 0 && <p className="p-6 text-center text-sm text-slate-500">No hay productos INVIMA vigentes para esta empresa.</p>}
+          </div>
+        </div>
+      </Modal>
+
       <Modal open={showCecoModal} onClose={() => setShowCecoModal(false)} title={`Seleccionar CeCo · ${empresaWatch}`} size="lg">
         <div className="space-y-4">
           <div className="relative">
@@ -776,6 +837,34 @@ export default function ActaCreatePage() {
         </div>
       </Modal>
 
+      <Modal open={showSapModal} onClose={() => setShowSapModal(false)} title="Seleccionar código SAP" size="lg">
+        <div className="space-y-4">
+          <div className="relative">
+            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input autoFocus value={sapSearch} onChange={(event) => setSapSearch(event.target.value)} placeholder="Buscar por código o descripción..." className="w-full pl-9 pr-3 py-2.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+          </div>
+          <div className="max-h-[50vh] overflow-auto border border-slate-200 rounded-lg">
+            <table className="min-w-[620px] w-full text-sm">
+              <thead className="sticky top-0 bg-slate-50 border-b border-slate-200"><tr>
+                <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-slate-500">Código SAP</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-slate-500">Descripción</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-slate-500">Presentación</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-slate-500">Unidad</th>
+              </tr></thead>
+              <tbody className="divide-y divide-slate-100">
+                {filteredSapCodes.map((sap) => <tr key={sap.id} onClick={() => { form2.setValue("codigoSAP", sap.codigo, { shouldValidate: true }); form2.setValue("sapCodeId", sap.id); setShowSapModal(false); }} className="cursor-pointer hover:bg-blue-50">
+                  <td className="px-4 py-3 font-mono text-xs font-semibold text-blue-700">{sap.codigo}</td>
+                  <td className="px-4 py-3 text-slate-800">{sap.descripcion}</td>
+                  <td className="px-4 py-3 text-slate-600">{sap.presentacion}</td>
+                  <td className="px-4 py-3 text-xs text-slate-500">{sap.unidadMedida}</td>
+                </tr>)}
+              </tbody>
+            </table>
+            {filteredSapCodes.length === 0 && <p className="p-6 text-center text-sm text-slate-500">No hay códigos SAP relacionados.</p>}
+          </div>
+        </div>
+      </Modal>
+
       {/* Step 2: Material Info */}
       {currentStep === 1 && (
         <div className="bg-white rounded-xl border border-slate-200 p-6">
@@ -784,25 +873,11 @@ export default function ActaCreatePage() {
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">Registro INVIMA *</label>
               <div className="relative">
-                <input
-                  value={invimaSearch}
-                  onChange={(e) => { setInvimaSearch(e.target.value); form2.setValue("registroINVIMA", e.target.value); setShowInvimaDropdown(true); }}
-                  onBlur={() => setTimeout(() => setShowInvimaDropdown(false), 200)}
-                  placeholder="Buscar por nombre o número de registro..."
-                  className="w-full px-3 py-2.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-                {showInvimaDropdown && filteredInvima.length > 0 && (
-                  <div className="absolute top-full mt-1 left-0 right-0 bg-white border border-slate-200 rounded-lg shadow-lg z-20 max-h-48 overflow-y-auto">
-                    {filteredInvima.map((p) => (
-                      <button key={p.id} type="button" onMouseDown={() => selectInvima(p)}
-                        className="w-full text-left px-4 py-2.5 hover:bg-blue-50 transition-colors border-b border-slate-100 last:border-0">
-                        <p className="text-sm font-medium text-slate-800">{p.productName}</p>
-                        <p className="text-xs text-slate-500">{p.registryNumber} · {p.holder} · {p.presentacion}</p>
-                      </button>
-                    ))}
-
-                  </div>
-                )}
+                <input type="hidden" {...form2.register("registroINVIMA")} />
+                <button type="button" onClick={() => setShowInvimaModal(true)} className="w-full flex items-center justify-between gap-3 px-3 py-2.5 text-sm text-left border border-slate-300 rounded-lg bg-white hover:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                  <span className={form2.watch("registroINVIMA") ? "text-slate-800" : "text-slate-400"}>{form2.watch("registroINVIMA") || "Buscar y seleccionar un producto INVIMA"}</span>
+                  <Search size={16} className="shrink-0 text-slate-400" />
+                </button>
               </div>
               <FieldError message={form2.formState.errors.registroINVIMA?.message} />
             </div>
@@ -839,8 +914,13 @@ export default function ActaCreatePage() {
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Código SAP *</label>
-
-                <input {...form2.register("codigoSAP")} placeholder="SAP-XXXXX" className="w-full px-3 py-2.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                <input type="hidden" {...form2.register("codigoSAP")} />
+                <input type="hidden" {...form2.register("invimaProductId")} />
+                <input type="hidden" {...form2.register("sapCodeId")} />
+                <button type="button" onClick={() => setShowSapModal(true)} disabled={sapCodes.length === 0} className="w-full flex items-center justify-between gap-3 px-3 py-2.5 text-sm text-left border border-slate-300 rounded-lg bg-white hover:border-blue-500 disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed">
+                  <span className={form2.watch("codigoSAP") ? "text-slate-800" : "text-slate-400"}>{form2.watch("codigoSAP") || (sapCodes.length ? "Seleccione un código SAP" : "Seleccione primero un INVIMA")}</span>
+                  <Search size={16} className="shrink-0 text-slate-400" />
+                </button>
                 <FieldError message={form2.formState.errors.codigoSAP?.message} />
               </div>
               <div>

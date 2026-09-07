@@ -30,7 +30,7 @@ export async function createActa(req, res) {
       responsable, area, descripcion, codigoSAP, numeroLote, ordenProduccion,
       sustanciaControlada, clasificacion, fechaVencimiento, registroINVIMA,
       pesoKg, cantidadUnidades, costoDestruccion, causal, otraCausal, observaciones,
-      adjuntos, requiereCostos,
+      adjuntos, requiereCostos, cecoId, invimaProductId, sapCodeId,
     } = req.body;
     const pool = getPool();
 
@@ -64,10 +64,13 @@ export async function createActa(req, res) {
       .input('observaciones', observaciones)
       .input('adjuntos', JSON.stringify(adjuntos || []))
       .input('requiereCostos', requiereCostos)
+      .input('cecoId', cecoId)
+      .input('invimaProductId', invimaProductId)
+      .input('sapCodeId', sapCodeId)
       .query(`
         INSERT INTO actas 
-        (id, consecutivo, status, empresa, centroCostos, fecha, solicitanteId, solicitanteNombre, responsable, area, descripcion, codigoSAP, numeroLote, ordenProduccion, sustanciaControlada, clasificacion, fechaVencimiento, registroINVIMA, pesoKg, cantidadUnidades, costoDestruccion, causal, otraCausal, observaciones, adjuntos, requiereCostos)
-        VALUES (@id, @consecutivo, @status, @empresa, @centroCostos, @fecha, @solicitanteId, @solicitanteNombre, @responsable, @area, @descripcion, @codigoSAP, @numeroLote, @ordenProduccion, @sustanciaControlada, @clasificacion, @fechaVencimiento, @registroINVIMA, @pesoKg, @cantidadUnidades, @costoDestruccion, @causal, @otraCausal, @observaciones, @adjuntos, @requiereCostos)
+        (id, consecutivo, status, empresa, centroCostos, fecha, solicitanteId, solicitanteNombre, responsable, area, descripcion, codigoSAP, numeroLote, ordenProduccion, sustanciaControlada, clasificacion, fechaVencimiento, registroINVIMA, pesoKg, cantidadUnidades, costoDestruccion, causal, otraCausal, observaciones, adjuntos, requiereCostos, cecoId, invimaProductId, sapCodeId)
+        VALUES (@id, @consecutivo, @status, @empresa, @centroCostos, @fecha, @solicitanteId, @solicitanteNombre, @responsable, @area, @descripcion, @codigoSAP, @numeroLote, @ordenProduccion, @sustanciaControlada, @clasificacion, @fechaVencimiento, @registroINVIMA, @pesoKg, @cantidadUnidades, @costoDestruccion, @causal, @otraCausal, @observaciones, @adjuntos, @requiereCostos, @cecoId, @invimaProductId, @sapCodeId)
       `);
 
     // Crear historial inicial

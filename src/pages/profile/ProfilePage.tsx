@@ -122,16 +122,17 @@ export default function ProfilePage() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="profile-page space-y-6">
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div>
-          <p className="text-sm font-medium text-blue-700">Cuenta</p>
+          <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-teal-700">Área personal</p>
           <h1 className="text-2xl font-bold text-slate-900">Mi perfil</h1>
+          <p className="mt-1 text-sm text-slate-500">Administra tu identidad y tus accesos dentro del sistema.</p>
         </div>
         {!isSolicitante && (
           <button
             onClick={() => setIsEditing((prev) => !prev)}
-            className="inline-flex items-center justify-center rounded-lg bg-blue-700 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-800"
+            className="inline-flex items-center justify-center rounded-lg bg-sky-800 px-4 py-2 text-sm font-semibold text-white shadow-[0_6px_14px_rgba(7,89,133,0.18)] transition hover:bg-sky-900"
           >
             {isEditing ? "Cancelar" : "Editar perfil"}
           </button>
@@ -139,19 +140,20 @@ export default function ProfilePage() {
       </div>
 
       <div className="grid gap-6 xl:grid-cols-[1.3fr_0.7fr]">
-        <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-          <div className="flex items-center gap-4 border-b border-slate-200 pb-5">
-            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-blue-100 text-xl font-bold text-blue-700">
+        <section className="profile-panel rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+          <div className="profile-identity flex items-center gap-4 border-b border-slate-200 pb-5">
+            <div className="profile-avatar flex h-16 w-16 items-center justify-center rounded-2xl bg-teal-100 text-xl font-bold text-teal-800">
               {user.nombre.charAt(0).toUpperCase()}
             </div>
-            <div>
+            <div className="min-w-0">
               <h2 className="text-xl font-bold text-slate-900">{user.nombre}</h2>
               <p className="text-sm text-slate-500">@{user.username}</p>
+              <span className="mt-2 inline-flex rounded-full bg-teal-50 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-teal-700">{ROLE_LABELS[user.rol]}</span>
             </div>
           </div>
 
           <div className="mt-6 space-y-4">
-            <div className="flex items-start gap-3 rounded-xl bg-slate-50 p-3">
+            <div className="profile-info-row flex items-start gap-3 rounded-xl bg-slate-50 p-3">
               <UserIcon className="mt-0.5 h-4 w-4 text-slate-500" />
               <div className="w-full">
                 <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Nombre</p>
@@ -167,7 +169,7 @@ export default function ProfilePage() {
               </div>
             </div>
 
-            <div className="flex items-start gap-3 rounded-xl bg-slate-50 p-3">
+            <div className="profile-info-row flex items-start gap-3 rounded-xl bg-slate-50 p-3">
               <Mail className="mt-0.5 h-4 w-4 text-slate-500" />
               <div className="w-full">
                 <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Correo</p>
@@ -184,7 +186,7 @@ export default function ProfilePage() {
               </div>
             </div>
 
-            <div className="flex items-start gap-3 rounded-xl bg-slate-50 p-3">
+            <div className="profile-info-row flex items-start gap-3 rounded-xl bg-slate-50 p-3">
               <MapPin className="mt-0.5 h-4 w-4 text-slate-500" />
               <div className="w-full">
                 <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Área</p>
@@ -200,7 +202,7 @@ export default function ProfilePage() {
               </div>
             </div>
 
-            <div className="flex items-start gap-3 rounded-xl bg-slate-50 p-3">
+            <div className="profile-info-row flex items-start gap-3 rounded-xl bg-slate-50 p-3">
               <ShieldCheck className="mt-0.5 h-4 w-4 text-slate-500" />
               <div>
                 <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Rol</p>
@@ -258,14 +260,14 @@ export default function ProfilePage() {
         </section>
 
         <aside className="space-y-6">
-          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="profile-panel rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
             <h3 className="text-lg font-bold text-slate-900">Accesos rápidos</h3>
             <div className="mt-4 space-y-2">
               {roleActions.map((action) => (
                 <button
                   key={action.path}
                   onClick={() => navigate(action.path)}
-                  className="flex w-full items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-left text-sm font-medium text-slate-700 transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700"
+                  className="profile-action flex w-full items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-left text-sm font-medium text-slate-700 transition hover:border-teal-200 hover:bg-teal-50 hover:text-teal-700"
                 >
                   {action.label}
                   <ArrowRight size={15} />
@@ -274,9 +276,9 @@ export default function ProfilePage() {
             </div>
           </div>
 
-          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="profile-panel rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
             <h3 className="text-lg font-bold text-slate-900">Estado</h3>
-            <div className="mt-4 rounded-xl bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-700">
+            <div className="profile-status mt-4 rounded-xl bg-emerald-50 px-3 py-2.5 text-sm font-semibold text-emerald-700">
               Cuenta activa
             </div>
             <p className="mt-3 text-sm text-slate-500">

@@ -44,7 +44,7 @@ export function Header() {
   };
 
   return (
-    <header className="h-14 bg-white border-b border-slate-200 flex items-center px-6 gap-4 shrink-0">
+    <header className="h-16 bg-white/90 backdrop-blur-md border-b border-slate-200/80 flex items-center px-6 gap-4 shrink-0 shadow-[0_1px_12px_rgba(15,23,42,0.03)]">
       {/* Breadcrumbs */}
       <nav className="flex items-center gap-1 flex-1 min-w-0">
         {crumbs.map((crumb, i) => (

@@ -77,6 +77,22 @@ export interface InvimaProduct {
   tipoMedicamento: string;
   controlado: boolean;
   presentacion?: string;
+  empresaCode?: string;
+  empresa?: Empresa;
+  requiereSap?: boolean;
+  requiereInvima?: boolean;
+}
+
+export interface SapCode {
+  id: string;
+  codigo: string;
+  descripcion?: string;
+  empresaCode: string;
+  empresa: Empresa;
+  invimaProductId?: string;
+  presentacion?: string;
+  unidadMedida?: string;
+  status: "Activo" | "Inactivo";
 }
 
 export interface ActaHistorial {
@@ -138,6 +154,9 @@ export interface Acta {
   historial: ActaHistorial[];
   aprobaciones: ActaAprobacion[];
   requiereCostos: boolean;
+  cecoId?: string;
+  invimaProductId?: string;
+  sapCodeId?: string;
 }
 
 export interface Notification {

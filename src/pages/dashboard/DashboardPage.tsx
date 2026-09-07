@@ -15,7 +15,7 @@ import { ROLE_LABELS } from "../../constants";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
 
-const COLORS = ["#1D4ED8", "#16A34A", "#D97706", "#DC2626", "#7C3AED", "#0284C7"];
+const COLORS = ["#0F766E", "#0369A1", "#D97706"];
 
 function buildMonthlyData(actas: ReturnType<typeof useApp>["actas"]) {
   const months: Record<string, number> = {};
@@ -55,12 +55,26 @@ export default function DashboardPage() {
 
     const monthlyData = buildMonthlyData(actas);
     const recentActas = [...actas].sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()).slice(0, 5);
+    const inProcess = actas.filter((a) => ["pendiente_aprobacion_area", "pendiente_costos", "pendiente_hse"].includes(a.status)).length;
+    const approvalRate = actas.length ? Math.round((actas.filter((a) => a.status === "aprobada").length / actas.length) * 100) : 0;
 
     return (
       <div className="space-y-6">
-        <div>
-          <h1 className="text-xl font-bold text-slate-900">Dashboard Administrativo</h1>
-          <p className="text-sm text-slate-500 mt-0.5">Bienvenido, {user.nombre}</p>
+        <div className="flex flex-wrap items-end justify-between gap-4">
+          <div>
+            <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-teal-700">Centro de control</p>
+            <h1 className="text-2xl font-bold text-slate-900">Dashboard Administrativo</h1>
+            <p className="text-sm text-slate-500 mt-1">Bienvenido, {user.nombre}. Este es el estado general del sistema.</p>
+          </div>
+          <div className="flex items-center gap-2 rounded-full border border-teal-100 bg-teal-50 px-3 py-1.5 text-xs font-semibold text-teal-800">
+            <Activity size={14} /> Operación en tiempo real
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <div className="dashboard-insight"><span className="dashboard-insight-icon bg-teal-50 text-teal-700"><TrendingUp size={16} /></span><span><b>{actas.length}</b><small>Actas registradas</small></span></div>
+          <div className="dashboard-insight"><span className="dashboard-insight-icon bg-sky-50 text-sky-700"><Clock size={16} /></span><span><b>{inProcess}</b><small>En flujo de aprobación</small></span></div>
+          <div className="dashboard-insight"><span className="dashboard-insight-icon bg-emerald-50 text-emerald-700"><CheckCircle size={16} /></span><span><b>{approvalRate}%</b><small>Tasa de aprobación</small></span></div>
         </div>
 
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
@@ -75,27 +89,34 @@ export default function DashboardPage() {
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-          <div className="bg-white rounded-xl border border-slate-200 p-5 lg:col-span-2">
-            <h2 className="text-sm font-semibold text-slate-700 mb-4">Actas por mes</h2>
-            <ResponsiveContainer width="100%" height={200}>
+          <div className="chart-panel bg-white rounded-2xl border border-slate-200 p-5 lg:col-span-2">
+            <div className="mb-4 flex items-start justify-between gap-3">
+              <div><h2 className="text-sm font-semibold text-slate-800">Actas por mes</h2><p className="mt-1 text-xs text-slate-500">Volumen de registros en los últimos seis meses</p></div>
+              <span className="chart-kicker">Tendencia</span>
+            </div>
+            <ResponsiveContainer width="100%" height={220}>
               <BarChart data={monthlyData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" />
-                <XAxis dataKey="mes" tick={{ fontSize: 12 }} />
-                <YAxis tick={{ fontSize: 12 }} />
-                <Tooltip />
-                <Bar dataKey="total" fill="#1D4ED8" radius={[4, 4, 0, 0]} />
+                <defs><linearGradient id="actasBar" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#14B8A6" /><stop offset="100%" stopColor="#0369A1" /></linearGradient></defs>
+                <CartesianGrid vertical={false} strokeDasharray="4 4" stroke="#E2E8F0" />
+                <XAxis dataKey="mes" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: "#64748B" }} />
+                <YAxis allowDecimals={false} axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: "#64748B" }} />
+                <Tooltip cursor={{ fill: "rgba(20,184,166,0.08)" }} contentStyle={{ borderRadius: 12, border: "1px solid #CCFBF1", boxShadow: "0 10px 24px rgba(15,23,42,0.12)", fontSize: 12 }} labelStyle={{ color: "#0F172A", fontWeight: 700 }} />
+                <Bar dataKey="total" name="Actas" fill="url(#actasBar)" radius={[6, 6, 0, 0]} maxBarSize={42} />
               </BarChart>
             </ResponsiveContainer>
           </div>
 
-          <div className="bg-white rounded-xl border border-slate-200 p-5">
-            <h2 className="text-sm font-semibold text-slate-700 mb-4">Por empresa</h2>
-            <ResponsiveContainer width="100%" height={200}>
+          <div className="chart-panel bg-white rounded-2xl border border-slate-200 p-5">
+            <div className="mb-1 flex items-start justify-between gap-3"><div><h2 className="text-sm font-semibold text-slate-800">Distribución por empresa</h2><p className="mt-1 text-xs text-slate-500">Participación sobre el total</p></div><span className="chart-kicker">Empresas</span></div>
+            <ResponsiveContainer width="100%" height={190}>
               <PieChart>
-                <Pie data={empresaData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={70} label={({ name, value }) => `${name}: ${value}`}>
+                <Pie data={empresaData} dataKey="value" nameKey="name" cx="50%" cy="48%" innerRadius={48} outerRadius={72} paddingAngle={4} stroke="none">
                   {empresaData.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
                 </Pie>
-                <Tooltip />
+                <text x="50%" y="47%" textAnchor="middle" dominantBaseline="middle" className="fill-slate-900 text-xl font-bold">{actas.length}</text>
+                <text x="50%" y="58%" textAnchor="middle" dominantBaseline="middle" className="fill-slate-500 text-[10px]">actas</text>
+                <Tooltip contentStyle={{ borderRadius: 12, border: "1px solid #CCFBF1", boxShadow: "0 10px 24px rgba(15,23,42,0.12)", fontSize: 12 }} />
+                <Legend iconType="circle" iconSize={7} wrapperStyle={{ fontSize: 11, color: "#64748B" }} />
               </PieChart>
             </ResponsiveContainer>
           </div>

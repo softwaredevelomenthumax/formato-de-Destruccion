@@ -8,18 +8,20 @@ import { EmptyState } from "../../components/ui/EmptyState";
 import type { InvimaProduct } from "../../types";
 import { toast } from "sonner";
 import { useAuth } from "../../context/AuthContext";
+import { EMPRESAS } from "../../constants";
 
 export default function InvimaPage() {
   const { user } = useAuth();
   const { invimaProducts, addInvimaProduct, updateInvimaProduct, deleteInvimaProduct } = useApp();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<"" | "Vigente" | "Vencido" | "Cancelado">("");
+  const [empresaFilter, setEmpresaFilter] = useState("");
   const [modalOpen, setModalOpen] = useState(false);
   const [editItem, setEditItem] = useState<InvimaProduct | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
 
   const [form, setForm] = useState<Omit<InvimaProduct, "id">>({
-    productName: "", registryNumber: "", internalStatus: "Vigente", holder: "Humax", tipoMedicamento: "", controlado: false, presentacion: ""
+    productName: "", registryNumber: "", internalStatus: "Vigente", holder: "Humax", empresa: "Humax", empresaCode: "CO11", tipoMedicamento: "", controlado: false, presentacion: "", requiereSap: true, requiereInvima: true
   });
 
   if (user?.rol !== "planeacion") return <Navigate to="/dashboard" replace />;
@@ -27,18 +29,18 @@ export default function InvimaPage() {
   const filtered = invimaProducts.filter((p) => {
     const q = search.toLowerCase();
     const match = !q || p.productName.toLowerCase().includes(q) || p.registryNumber.toLowerCase().includes(q) || p.holder.toLowerCase().includes(q);
-    return match && (!statusFilter || p.internalStatus === statusFilter);
+    return match && (!statusFilter || p.internalStatus === statusFilter) && (!empresaFilter || p.empresa === empresaFilter);
   });
 
   const openCreate = () => {
     setEditItem(null);
-    setForm({ productName: "", registryNumber: "", internalStatus: "Vigente", holder: "Humax", tipoMedicamento: "", controlado: false, presentacion: "" });
+    setForm({ productName: "", registryNumber: "", internalStatus: "Vigente", holder: "Humax", empresa: "Humax", empresaCode: "CO11", tipoMedicamento: "", controlado: false, presentacion: "", requiereSap: true, requiereInvima: true });
     setModalOpen(true);
   };
 
   const openEdit = (item: InvimaProduct) => {
     setEditItem(item);
-    setForm({ productName: item.productName, registryNumber: item.registryNumber, internalStatus: item.internalStatus, holder: item.holder, tipoMedicamento: item.tipoMedicamento, controlado: item.controlado, presentacion: item.presentacion || "" });
+    setForm({ productName: item.productName, registryNumber: item.registryNumber, internalStatus: item.internalStatus, holder: item.holder, empresa: item.empresa || item.holder, empresaCode: item.empresaCode || "CO11", tipoMedicamento: item.tipoMedicamento, controlado: item.controlado, presentacion: item.presentacion || "", requiereSap: item.requiereSap ?? true, requiereInvima: item.requiereInvima ?? true });
     setModalOpen(true);
   };
 
@@ -85,6 +87,10 @@ export default function InvimaPage() {
           <option value="Vencido">Vencido</option>
           <option value="Cancelado">Cancelado</option>
         </select>
+        <select value={empresaFilter} onChange={(e) => setEmpresaFilter(e.target.value)} className="px-3 py-2 text-sm border border-slate-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+          <option value="">Todas las empresas</option>
+          {EMPRESAS.map((empresa) => <option key={empresa}>{empresa}</option>)}
+        </select>
       </div>
 
       <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
@@ -96,6 +102,7 @@ export default function InvimaPage() {
               <thead>
                 <tr className="border-b border-slate-200 bg-slate-50">
                   <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Producto</th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Empresa</th>
                   <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Número de Registro</th>
                   <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Estado</th>
                   <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Titular</th>
@@ -111,6 +118,7 @@ export default function InvimaPage() {
                       <p className="font-medium text-slate-800">{p.productName}</p>
                       {p.presentacion && <p className="text-xs text-slate-500">{p.presentacion}</p>}
                     </td>
+                    <td className="px-4 py-3 text-slate-600">{p.empresa || p.holder}</td>
                     <td className="px-4 py-3 font-mono text-xs text-slate-700">{p.registryNumber}</td>
                     <td className="px-4 py-3">
                       <Badge label={p.internalStatus} variant={statusVariant(p.internalStatus) as any} />
@@ -146,6 +154,12 @@ export default function InvimaPage() {
           <div className="col-span-2">
             <label className="block text-sm font-medium text-slate-700 mb-1">Nombre del Producto *</label>
             <input value={form.productName} onChange={(e) => setForm((p) => ({ ...p, productName: e.target.value }))} className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Empresa</label>
+            <select value={form.empresa} onChange={(e) => setForm((p) => ({ ...p, empresa: e.target.value as any, empresaCode: e.target.value === "Humax" ? "CO11" : e.target.value === "Farmatech" ? "CO12" : "CO13" }))} className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg bg-white">
+              {EMPRESAS.map((empresa) => <option key={empresa}>{empresa}</option>)}
+            </select>
           </div>
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">Número de Registro *</label>

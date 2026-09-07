@@ -6,7 +6,7 @@ import { ActaStatusBadge } from "../../components/ui/Badge";
 import { CAUSAL_LABELS, CLASIFICACION_LABELS, EMPRESAS } from "../../constants";
 import type { ActaStatus, Empresa } from "../../types";
 
-const COLORS = ["#1D4ED8", "#16A34A", "#D97706", "#DC2626", "#7C3AED", "#0284C7", "#0F766E", "#9333EA"];
+const COLORS = ["#0F766E", "#0369A1", "#D97706", "#E11D48", "#7C3AED", "#0891B2", "#65A30D", "#C026D3"];
 
 function numericValue(value: unknown): number {
   const number = Number(value);
@@ -68,8 +68,9 @@ export default function ReportsPage() {
     <div className="space-y-5">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-bold text-slate-900">Reportes</h1>
-          <p className="text-sm text-slate-500 mt-0.5">{filtered.length} actas en el reporte</p>
+          <p className="mb-1 text-[11px] font-bold uppercase tracking-[0.16em] text-teal-700">Análisis operativo</p>
+          <h1 className="text-2xl font-bold text-slate-900">Reportes</h1>
+          <p className="text-sm text-slate-500 mt-1">{filtered.length} actas en el reporte · Explora el comportamiento del flujo.</p>
         </div>
         <button onClick={exportCSV} className="flex items-center gap-2 border border-slate-300 bg-white text-slate-700 px-4 py-2 rounded-lg text-sm font-medium hover:bg-slate-50">
           <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" className="bi bi-file-earmark-arrow-down-fill" viewBox="0 0 16 16">
@@ -121,7 +122,7 @@ export default function ReportsPage() {
           { label: "Peso total (kg)", value: totalPeso.toFixed(2) },
           { label: "Total unidades", value: totalUnidades.toLocaleString("es-CO") },
         ].map((s) => (
-          <div key={s.label} className="bg-white rounded-xl border border-slate-200 p-4">
+          <div key={s.label} className="stat-card bg-white rounded-2xl border border-slate-200 p-4">
             <p className="text-xs text-slate-500 font-medium uppercase tracking-wide">{s.label}</p>
             <p className="text-xl font-bold text-slate-900 mt-1">{s.value}</p>
           </div>
@@ -130,27 +131,28 @@ export default function ReportsPage() {
 
       {/* Charts */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-        <div className="bg-white rounded-xl border border-slate-200 p-5">
-          <h3 className="text-sm font-semibold text-slate-700 mb-4">Actas por empresa</h3>
-          <ResponsiveContainer width="100%" height={200}>
+        <div className="chart-panel bg-white rounded-2xl border border-slate-200 p-5">
+          <div className="mb-4 flex items-start justify-between gap-3"><div><h3 className="text-sm font-semibold text-slate-800">Actas por empresa</h3><p className="mt-1 text-xs text-slate-500">Volumen y costo asociado</p></div><span className="chart-kicker">Comparativo</span></div>
+          <ResponsiveContainer width="100%" height={220}>
             <BarChart data={byEmpresa}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" />
-              <XAxis dataKey="name" tick={{ fontSize: 12 }} />
-              <YAxis tick={{ fontSize: 12 }} />
-              <Tooltip formatter={(v, n) => n === "costo" ? `COP ${Number(v).toLocaleString("es-CO")}` : v} />
-              <Bar dataKey="total" fill="#1D4ED8" radius={[4, 4, 0, 0]} name="Actas" />
+              <defs><linearGradient id="reportCompanyBar" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#14B8A6" /><stop offset="100%" stopColor="#0369A1" /></linearGradient></defs>
+              <CartesianGrid vertical={false} strokeDasharray="4 4" stroke="#E2E8F0" />
+              <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: "#64748B" }} />
+              <YAxis allowDecimals={false} axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: "#64748B" }} />
+              <Tooltip cursor={{ fill: "rgba(20,184,166,0.08)" }} formatter={(v, n) => n === "costo" ? `COP ${Number(v).toLocaleString("es-CO")}` : v} contentStyle={{ borderRadius: 12, border: "1px solid #CCFBF1", boxShadow: "0 10px 24px rgba(15,23,42,0.12)", fontSize: 12 }} />
+              <Bar dataKey="total" fill="url(#reportCompanyBar)" radius={[6, 6, 0, 0]} maxBarSize={48} name="Actas" />
             </BarChart>
           </ResponsiveContainer>
         </div>
 
-        <div className="bg-white rounded-xl border border-slate-200 p-5">
-          <h3 className="text-sm font-semibold text-slate-700 mb-4">Por causal de destrucción</h3>
-          <ResponsiveContainer width="100%" height={200}>
+        <div className="chart-panel bg-white rounded-2xl border border-slate-200 p-5">
+          <div className="mb-2 flex items-start justify-between gap-3"><div><h3 className="text-sm font-semibold text-slate-800">Por causal de destrucción</h3><p className="mt-1 text-xs text-slate-500">Distribución del motivo registrado</p></div><span className="chart-kicker">Causales</span></div>
+          <ResponsiveContainer width="100%" height={220}>
             <PieChart>
-              <Pie data={byCausal} dataKey="total" nameKey="name" cx="50%" cy="50%" outerRadius={80} label={({ name, value }) => `${value}`}>
+              <Pie data={byCausal} dataKey="total" nameKey="name" cx="50%" cy="50%" innerRadius={50} outerRadius={82} paddingAngle={3} stroke="none">
                 {byCausal.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
               </Pie>
-              <Tooltip />
+              <Tooltip contentStyle={{ borderRadius: 12, border: "1px solid #CCFBF1", boxShadow: "0 10px 24px rgba(15,23,42,0.12)", fontSize: 12 }} />
             </PieChart>
           </ResponsiveContainer>
           <div className="mt-2 flex flex-wrap gap-2">
@@ -163,15 +165,16 @@ export default function ReportsPage() {
           </div>
         </div>
 
-        <div className="bg-white rounded-xl border border-slate-200 p-5 lg:col-span-2">
-          <h3 className="text-sm font-semibold text-slate-700 mb-4">Por clasificación de material</h3>
-          <ResponsiveContainer width="100%" height={180}>
+        <div className="chart-panel bg-white rounded-2xl border border-slate-200 p-5 lg:col-span-2">
+          <div className="mb-4 flex items-start justify-between gap-3"><div><h3 className="text-sm font-semibold text-slate-800">Por clasificación de material</h3><p className="mt-1 text-xs text-slate-500">Cantidad de actas por categoría</p></div><span className="chart-kicker">Materiales</span></div>
+          <ResponsiveContainer width="100%" height={220}>
             <BarChart data={byClasificacion} layout="vertical">
-              <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" />
-              <XAxis type="number" tick={{ fontSize: 11 }} />
-              <YAxis type="category" dataKey="name" tick={{ fontSize: 11 }} width={150} />
-              <Tooltip />
-              <Bar dataKey="total" fill="#7C3AED" radius={[0, 4, 4, 0]} name="Actas" />
+              <defs><linearGradient id="reportMaterialBar" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stopColor="#0F766E" /><stop offset="100%" stopColor="#0EA5E9" /></linearGradient></defs>
+              <CartesianGrid horizontal={false} strokeDasharray="4 4" stroke="#E2E8F0" />
+              <XAxis type="number" allowDecimals={false} axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: "#64748B" }} />
+              <YAxis type="category" dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: "#64748B" }} width={150} />
+              <Tooltip cursor={{ fill: "rgba(20,184,166,0.08)" }} contentStyle={{ borderRadius: 12, border: "1px solid #CCFBF1", boxShadow: "0 10px 24px rgba(15,23,42,0.12)", fontSize: 12 }} />
+              <Bar dataKey="total" fill="url(#reportMaterialBar)" radius={[0, 6, 6, 0]} maxBarSize={26} name="Actas" />
             </BarChart>
           </ResponsiveContainer>
         </div>

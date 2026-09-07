@@ -101,7 +101,27 @@ export async function initializeDatabase() {
         tipoMedicamento NVARCHAR(255),
         controlado BIT DEFAULT 0,
         presentacion NVARCHAR(255),
+        empresaCode NVARCHAR(20),
+        empresa NVARCHAR(100),
+        requiereSap BIT DEFAULT 1,
+        requiereInvima BIT DEFAULT 1,
         createdAt DATETIME DEFAULT GETDATE()
+      );
+
+      IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'sap_codes')
+      CREATE TABLE sap_codes (
+        id NVARCHAR(50) PRIMARY KEY,
+        codigo NVARCHAR(100) NOT NULL,
+        descripcion NVARCHAR(255),
+        empresaCode NVARCHAR(20) NOT NULL,
+        empresa NVARCHAR(100) NOT NULL,
+        invimaProductId NVARCHAR(50),
+        presentacion NVARCHAR(255),
+        unidadMedida NVARCHAR(50),
+        status NVARCHAR(20) DEFAULT 'Activo',
+        createdAt DATETIME DEFAULT GETDATE(),
+        updatedAt DATETIME DEFAULT GETDATE(),
+        FOREIGN KEY (invimaProductId) REFERENCES invima_products(id)
       );
 
       IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'cecos')
@@ -142,6 +162,13 @@ export async function initializeDatabase() {
       IF COL_LENGTH('actas', 'otraCausal') IS NULL ALTER TABLE actas ADD otraCausal NVARCHAR(255);
       IF COL_LENGTH('actas', 'observaciones') IS NULL ALTER TABLE actas ADD observaciones NVARCHAR(MAX);
       IF COL_LENGTH('actas', 'adjuntos') IS NULL ALTER TABLE actas ADD adjuntos NVARCHAR(MAX);
+      IF COL_LENGTH('invima_products', 'empresaCode') IS NULL ALTER TABLE invima_products ADD empresaCode NVARCHAR(20);
+      IF COL_LENGTH('invima_products', 'empresa') IS NULL ALTER TABLE invima_products ADD empresa NVARCHAR(100);
+      IF COL_LENGTH('invima_products', 'requiereSap') IS NULL ALTER TABLE invima_products ADD requiereSap BIT DEFAULT 1;
+      IF COL_LENGTH('invima_products', 'requiereInvima') IS NULL ALTER TABLE invima_products ADD requiereInvima BIT DEFAULT 1;
+      IF COL_LENGTH('actas', 'cecoId') IS NULL ALTER TABLE actas ADD cecoId NVARCHAR(50);
+      IF COL_LENGTH('actas', 'invimaProductId') IS NULL ALTER TABLE actas ADD invimaProductId NVARCHAR(50);
+      IF COL_LENGTH('actas', 'sapCodeId') IS NULL ALTER TABLE actas ADD sapCodeId NVARCHAR(50);
 
       IF COL_LENGTH('cecos', 'id') IS NULL ALTER TABLE cecos ADD id NVARCHAR(50) NULL;
       IF EXISTS (SELECT 1 FROM sys.tables WHERE name = 'cecos')

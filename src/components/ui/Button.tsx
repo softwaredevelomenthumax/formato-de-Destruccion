@@ -24,10 +24,10 @@ export function Button({
     lg: "px-5 py-2.5 text-base gap-2",
   };
   const variants = {
-    primary: "bg-blue-700 text-white hover:bg-blue-800 disabled:bg-blue-300 shadow-sm",
+    primary: "bg-sky-800 text-white hover:bg-sky-900 disabled:bg-sky-300 shadow-[0_6px_14px_rgba(7,89,133,0.18)]",
     secondary: "bg-slate-100 text-slate-700 hover:bg-slate-200 disabled:opacity-50",
     ghost: "bg-transparent text-slate-600 hover:bg-slate-100 disabled:opacity-50",
-    danger: "bg-red-600 text-white hover:bg-red-700 disabled:bg-red-300 shadow-sm",
+    danger: "bg-rose-600 text-white hover:bg-rose-700 disabled:bg-rose-300 shadow-[0_6px_14px_rgba(225,29,72,0.16)]",
     outline: "bg-white text-slate-700 border border-slate-300 hover:bg-slate-50 disabled:opacity-50",
   };
 

@@ -55,6 +55,8 @@ export const api = {
 	createInvimaProduct: (product) => fetch(`${API_BASE_URL}/invima`, { method: "POST", headers: getHeaders(), body: JSON.stringify(product) }).then((r) => r.json()),
 	updateInvimaProduct: (id, updates) => fetch(`${API_BASE_URL}/invima/${id}`, { method: "PUT", headers: getHeaders(), body: JSON.stringify(updates) }).then((r) => r.json()),
 	deleteInvimaProduct: (id) => fetch(`${API_BASE_URL}/invima/${id}`, { method: "DELETE", headers: getHeaders() }).then((r) => r.json()),
+	getSapCodes: (params = "") => fetchJson(`${API_BASE_URL}/sap${params ? `?${params}` : ""}`, { headers: getHeaders() }),
+	createSapCode: (sap) => fetchJson(`${API_BASE_URL}/sap`, { method: "POST", headers: getHeaders(), body: JSON.stringify(sap) }),
 	getCecos: () => fetchJson(`${API_BASE_URL}/cecos`, { headers: getHeaders() }),
 	createCeco: (ceco) => fetchJson(`${API_BASE_URL}/cecos`, { method: "POST", headers: getHeaders(), body: JSON.stringify(ceco) }),
 	updateCeco: (id, updates) => fetchJson(`${API_BASE_URL}/cecos/${id}`, { method: "PUT", headers: getHeaders(), body: JSON.stringify(updates) }),

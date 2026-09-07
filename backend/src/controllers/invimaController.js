@@ -3,7 +3,7 @@ import { getPool } from '../database/connection.js';
 // Crear producto INVIMA
 export async function createInvimaProduct(req, res) {
   try {
-    const { productName, registryNumber, internalStatus, holder, tipoMedicamento, controlado, presentacion } = req.body;
+    const { productName, registryNumber, internalStatus, holder, tipoMedicamento, controlado, presentacion, empresaCode, empresa, requiereSap, requiereInvima } = req.body;
     const pool = getPool();
 
     const id = `inv${Date.now()}`;
@@ -17,12 +17,16 @@ export async function createInvimaProduct(req, res) {
       .input('tipoMedicamento', tipoMedicamento)
       .input('controlado', controlado)
       .input('presentacion', presentacion)
+      .input('empresaCode', empresaCode)
+      .input('empresa', empresa)
+      .input('requiereSap', requiereSap ?? 1)
+      .input('requiereInvima', requiereInvima ?? 1)
       .query(`
-        INSERT INTO invima_products (id, productName, registryNumber, internalStatus, holder, tipoMedicamento, controlado, presentacion)
-        VALUES (@id, @productName, @registryNumber, @internalStatus, @holder, @tipoMedicamento, @controlado, @presentacion)
+        INSERT INTO invima_products (id, productName, registryNumber, internalStatus, holder, tipoMedicamento, controlado, presentacion, empresaCode, empresa, requiereSap, requiereInvima)
+        VALUES (@id, @productName, @registryNumber, @internalStatus, @holder, @tipoMedicamento, @controlado, @presentacion, @empresaCode, @empresa, @requiereSap, @requiereInvima)
       `);
 
-    res.status(201).json({ id, productName, registryNumber, internalStatus, holder, tipoMedicamento, controlado, presentacion });
+    res.status(201).json({ id, productName, registryNumber, internalStatus, holder, tipoMedicamento, controlado, presentacion, empresaCode, empresa, requiereSap: requiereSap ?? 1, requiereInvima: requiereInvima ?? 1 });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
