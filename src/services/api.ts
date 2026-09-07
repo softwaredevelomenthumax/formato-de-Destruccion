@@ -1,5 +1,8 @@
 // @ts-nocheck
-const API_BASE_URL = (import.meta.env.VITE_API_URL || "http://localhost:3001/api").replace(/\/+$/, "");
+const defaultApiUrl = typeof window !== "undefined"
+	? `http://${window.location.hostname}:3002/api`
+	: "http://localhost:3002/api";
+const API_BASE_URL = (import.meta.env.VITE_API_URL || defaultApiUrl).replace(/\/+$/, "");
 
 async function parseResponse(response) {
 	const text = await response.text();

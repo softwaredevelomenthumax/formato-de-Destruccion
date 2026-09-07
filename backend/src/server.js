@@ -93,7 +93,7 @@ async function start() {
     // Inicializar base de datos
     await initializeDatabase();
 
-    app.listen(PORT, () => {
+    app.listen(PORT, '0.0.0.0', () => {
       console.log(`✓ Servidor ejecutándose en puerto ${PORT}`);
       console.log(`✓ CORS habilitado para: ${process.env.CORS_ORIGIN}`);
     });
@@ -101,7 +101,7 @@ async function start() {
     console.error('Error iniciando servidor:', error);
     // No salir si falla la conexión, arrancar de todas formas
     console.log('\n⚠️  Servidor arrancando sin BD. Verifica tu configuración de SQL Server.\n');
-    app.listen(PORT, () => {
+    app.listen(PORT, '0.0.0.0', () => {
       console.log(`✓ Servidor ejecutándose en puerto ${PORT} (sin BD)`);
     });
   }
