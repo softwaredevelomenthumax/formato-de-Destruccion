@@ -173,7 +173,7 @@ export async function initializeDatabase() {
       IF COL_LENGTH('cecos', 'id') IS NULL ALTER TABLE cecos ADD id NVARCHAR(50) NULL;
       IF EXISTS (SELECT 1 FROM sys.tables WHERE name = 'cecos')
         AND EXISTS (SELECT 1 FROM cecos WHERE id IS NULL)
-        UPDATE cecos SET id = CONCAT(empresaCode, '-', ceco) WHERE id IS NULL;
+        UPDATE cecos SET id = empresaCode + '-' + ceco WHERE id IS NULL;
       IF COL_LENGTH('cecos', 'id') IS NOT NULL
         ALTER TABLE cecos ALTER COLUMN id NVARCHAR(50) NOT NULL;
       IF EXISTS (SELECT 1 FROM sys.key_constraints WHERE name = 'PK_cecos' AND parent_object_id = OBJECT_ID('cecos'))
