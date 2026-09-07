@@ -33,6 +33,7 @@ const allowedOrigins = (process.env.CORS_ORIGIN || '')
     'http://10.179.12.212:8443',
     'http://10.179.12.139:8443',
     'http://10.179.12.0:8443',
+    'http://10.255.6.4:8443',
   ]);
 
 // Middlewares
