@@ -2,7 +2,7 @@ import { RouterProvider } from "react-router";
 import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { router } from "./routes";
-import logoa from "./assets/logoa.png";
+import logoa from "./public/logoa.png";
 
 const THEME_KEY = "add-theme";
 

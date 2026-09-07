@@ -7,8 +7,8 @@ import { Eye, EyeOff, Shield, AlertCircle, ChevronDown, UserRound, Moon, Sun } f
 import { useAuth } from "../../context/AuthContext";
 import { toast } from "sonner";
 import { motion } from "framer-motion";
-import logo from "../../assets/logi.png";
-import logoa from "../../assets/logoa.png";
+import logo from "../../public/logi.png";
+import logoa from "../../public/logoa.png";
 
 
 const schema = z.object({

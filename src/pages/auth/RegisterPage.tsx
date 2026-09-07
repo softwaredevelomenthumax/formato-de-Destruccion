@@ -8,7 +8,7 @@ import { motion } from "framer-motion";
 import { useApp } from "../../context/AppContext";
 import { ROLE_LABELS, AREAS } from "../../constants";
 import type { Role } from "../../types";
-import logoa from "../../assets/logoa.png";
+import logoa from "../../public/logoa.png";
 
 const schema = z.object({
   username: z.string().min(3, "Mínimo 3 caracteres").max(20, "Máximo 20 caracteres"),

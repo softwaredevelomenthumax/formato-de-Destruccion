@@ -9,7 +9,7 @@ import {
 import { useAuth } from "../../context/AuthContext";
 import { useApp } from "../../context/AppContext";
 import type { Role } from "../../types";
-import logi from "../../assets/logi.png";
+import logi from "../../public/logi.png";
 
 import type { ReactNode } from "react";
 
