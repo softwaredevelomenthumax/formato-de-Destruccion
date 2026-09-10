@@ -22,6 +22,7 @@ export default function ActaDetailPage() {
   const navigate = useNavigate();
 
   const [showApprove, setShowApprove] = useState(false);
+  const [isApproving, setIsApproving] = useState(false);
   const [showReject, setShowReject] = useState(false);
   const [showReturn, setShowReturn] = useState(false);
   const [approveComment, setApproveComment] = useState("");
@@ -67,11 +68,18 @@ export default function ActaDetailPage() {
   const canSend = user.rol === "solicitante" && acta.solicitanteId === user.id && acta.status === "borrador";
 
   const handleApprove = async () => {
-    if (!paso) return;
-    await approveActa(acta.id, paso, user.username, approveComment);
-    toast.success("Acta aprobada exitosamente");
-    setShowApprove(false);
-    setApproveComment("");
+    if (!paso || isApproving) return;
+    setIsApproving(true);
+    try {
+      await approveActa(acta.id, paso, user.username, approveComment);
+      toast.success("Acta aprobada exitosamente");
+      setShowApprove(false);
+      setApproveComment("");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "No se pudo aprobar el acta");
+    } finally {
+      setIsApproving(false);
+    }
   };
 
   const handleReject = async () => {
@@ -249,7 +257,7 @@ export default function ActaDetailPage() {
         footer={
           <>
             <button onClick={() => setShowApprove(false)} className="px-4 py-2 text-sm text-slate-600 hover:text-slate-900 font-medium rounded-lg hover:bg-slate-100">Cancelar</button>
-            <button onClick={handleApprove} className="px-5 py-2 text-sm font-semibold bg-green-600 text-white rounded-lg hover:bg-green-700">Aprobar</button>
+            <button onClick={handleApprove} disabled={isApproving} className="px-5 py-2 text-sm font-semibold bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-60">{isApproving ? "Aprobando..." : "Aprobar"}</button>
           </>
         }
       >

@@ -23,6 +23,12 @@ export type UserStatus = "activo" | "inactivo" | "pendiente" | "rechazado";
 export type Empresa = "Humax" | "Farmatech" | "Cambridge";
 
 export type ClasificacionMaterial =
+  | "PT"
+  | "ME"
+  | "MP"
+  | "SQ"
+  | "residuo_comun"
+  | "residuo_aprovechable"
   | "materia_prima"
   | "producto_semiterminado"
   | "granel"
@@ -70,9 +76,15 @@ export interface Ceco {
 
 export interface InvimaProduct {
   id: string;
+  fabricante?: string;
+  clase?: string;
+  estatusSap?: "Activo" | "Inactivo";
+  codigo?: string;
+  canal?: string;
+  estadoInvima?: string;
   productName: string;
   registryNumber: string;
-  internalStatus: "Vigente" | "Vencido" | "Cancelado";
+  internalStatus: string;
   holder: string;
   tipoMedicamento: string;
   controlado: boolean;
@@ -142,6 +154,7 @@ export interface Acta {
   clasificacion: ClasificacionMaterial;
   fechaVencimiento: string;
   registroINVIMA: string;
+  estadoInvima?: "Vigente" | "Vencido" | "Cancelado" | "N/A";
   pesoKg: number;
   cantidadUnidades: number;
   costoDestruccion: number;

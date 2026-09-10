@@ -85,6 +85,12 @@ export const ACTA_STATUS_COLORS: Record<
 };
 
 export const CLASIFICACION_LABELS: Record<ClasificacionMaterial, string> = {
+  PT: "Producto terminado (PT)",
+  ME: "Material de empaque (ME)",
+  MP: "Materia prima (MP)",
+  SQ: "Sustancia química (SQ)",
+  residuo_comun: "Común o residuo común peligroso",
+  residuo_aprovechable: "Residuo aprovechable",
   materia_prima: "Materia Prima",
   producto_semiterminado: "Producto Semiterminado",
   granel: "Granel",

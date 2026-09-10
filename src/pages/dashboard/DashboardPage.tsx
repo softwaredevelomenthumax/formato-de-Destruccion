@@ -4,26 +4,41 @@ import {
   TrendingUp, Activity
 } from "lucide-react";
 import {
-  BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid,
-  Tooltip, ResponsiveContainer, LineChart, Line, Legend
+  PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid,
+  Tooltip, ResponsiveContainer, AreaChart, Area, Legend, LabelList
 } from "recharts";
 import { useAuth } from "../../context/AuthContext";
 import { useApp } from "../../context/AppContext";
 import { StatCard } from "../../components/ui/StatCard";
+import ChartCard from "../../components/ui/ChartCard";
 import { ActaStatusBadge } from "../../components/ui/Badge";
+import ChartTooltip from "../../components/ui/ChartTooltip";
 import { ROLE_LABELS } from "../../constants";
-import { format } from "date-fns";
+import { format, startOfMonth, subMonths } from "date-fns";
 import { es } from "date-fns/locale";
 
-const COLORS = ["#0F766E", "#0369A1", "#D97706"];
+const COLORS = ["#0F766E", "#0284C7", "#F59E0B"];
 
 function buildMonthlyData(actas: ReturnType<typeof useApp>["actas"]) {
   const months: Record<string, number> = {};
   actas.forEach((a) => {
-    const key = format(new Date(a.createdAt), "MMM", { locale: es });
+    const key = format(startOfMonth(new Date(a.createdAt)), "yyyy-MM");
     months[key] = (months[key] || 0) + 1;
   });
-  return Object.entries(months).map(([mes, total]) => ({ mes, total })).slice(-6);
+
+  const latestDate = actas.length
+    ? new Date(Math.max(...actas.map((acta) => new Date(acta.createdAt).getTime())))
+    : new Date();
+  const latestMonth = startOfMonth(latestDate);
+
+  return Array.from({ length: 6 }, (_, index) => {
+    const month = subMonths(latestMonth, 5 - index);
+    const key = format(month, "yyyy-MM");
+    return {
+      mes: format(month, "MMM", { locale: es }),
+      total: months[key] || 0,
+    };
+  });
 }
 
 export default function DashboardPage() {
@@ -39,14 +54,6 @@ export default function DashboardPage() {
   // Admin dashboard
   if (user.rol === "administrador") {
     const pendingSol = solicitudes.filter((s) => s.status === "pendiente").length;
-    const actasByStatus = [
-      { name: "Borrador", value: actas.filter((a) => a.status === "borrador").length, color: "#94A3B8" },
-      { name: "En Proceso", value: actas.filter((a) => ["enviada", "pendiente_aprobacion_area", "pendiente_costos", "pendiente_hse"].includes(a.status)).length, color: "#D97706" },
-      { name: "Aprobadas", value: actas.filter((a) => a.status === "aprobada").length, color: "#16A34A" },
-      { name: "Rechazadas", value: actas.filter((a) => a.status === "rechazada").length, color: "#DC2626" },
-      { name: "Devueltas", value: actas.filter((a) => a.status === "devuelta_ajustes").length, color: "#F59E0B" },
-    ].filter((d) => d.value > 0);
-
     const empresaData = [
       { name: "Humax", value: actas.filter((a) => a.empresa === "Humax").length },
       { name: "Farmatech", value: actas.filter((a) => a.empresa === "Farmatech").length },
@@ -89,37 +96,38 @@ export default function DashboardPage() {
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-          <div className="chart-panel bg-white rounded-2xl border border-slate-200 p-5 lg:col-span-2">
-            <div className="mb-4 flex items-start justify-between gap-3">
-              <div><h2 className="text-sm font-semibold text-slate-800">Actas por mes</h2><p className="mt-1 text-xs text-slate-500">Volumen de registros en los últimos seis meses</p></div>
-              <span className="chart-kicker">Tendencia</span>
-            </div>
-            <ResponsiveContainer width="100%" height={220}>
-              <BarChart data={monthlyData}>
-                <defs><linearGradient id="actasBar" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#14B8A6" /><stop offset="100%" stopColor="#0369A1" /></linearGradient></defs>
-                <CartesianGrid vertical={false} strokeDasharray="4 4" stroke="#E2E8F0" />
-                <XAxis dataKey="mes" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: "#64748B" }} />
-                <YAxis allowDecimals={false} axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: "#64748B" }} />
-                <Tooltip cursor={{ fill: "rgba(20,184,166,0.08)" }} contentStyle={{ borderRadius: 12, border: "1px solid #CCFBF1", boxShadow: "0 10px 24px rgba(15,23,42,0.12)", fontSize: 12 }} labelStyle={{ color: "#0F172A", fontWeight: 700 }} />
-                <Bar dataKey="total" name="Actas" fill="url(#actasBar)" radius={[6, 6, 0, 0]} maxBarSize={42} />
-              </BarChart>
+          <ChartCard title="Actas por mes" description="Volumen de registros en los últimos seis meses" label="Tendencia" className="lg:col-span-2">
+            <div className="chart-visual chart-visual-bar">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={monthlyData} margin={{ top: 16, right: 12, left: -12, bottom: 0 }}>
+                <defs><linearGradient id="actasArea" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#14B8A6" stopOpacity={0.35} /><stop offset="100%" stopColor="#0EA5E9" stopOpacity={0.04} /></linearGradient></defs>
+                <CartesianGrid vertical={false} stroke="#DCEBED" strokeDasharray="2 6" />
+                <XAxis dataKey="mes" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: "#647B83" }} padding={{ left: 8, right: 8 }} />
+                <YAxis allowDecimals={false} axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: "#647B83" }} domain={[0, "dataMax + 1"]} />
+                <Tooltip cursor={{ stroke: "#99F6E4", strokeWidth: 1 }} content={<ChartTooltip />} />
+                <Area type="monotone" dataKey="total" name="Actas" stroke="#0F766E" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" fill="url(#actasArea)" activeDot={{ r: 7, fill: "#0F766E", stroke: "#ffffff", strokeWidth: 3 }} dot={{ r: 5, fill: "#14B8A6", stroke: "#ffffff", strokeWidth: 2 }}>
+                  <LabelList dataKey="total" position="top" offset={10} fill="#0F766E" fontSize={11} fontWeight={700} />
+                </Area>
+              </AreaChart>
             </ResponsiveContainer>
-          </div>
+            </div>
+          </ChartCard>
 
-          <div className="chart-panel bg-white rounded-2xl border border-slate-200 p-5">
-            <div className="mb-1 flex items-start justify-between gap-3"><div><h2 className="text-sm font-semibold text-slate-800">Distribución por empresa</h2><p className="mt-1 text-xs text-slate-500">Participación sobre el total</p></div><span className="chart-kicker">Empresas</span></div>
-            <ResponsiveContainer width="100%" height={190}>
+          <ChartCard title="Distribución por empresa" description="Participación sobre el total" label="Empresas">
+            <div className="chart-visual chart-visual-donut">
+            <ResponsiveContainer width="100%" height="100%">
               <PieChart>
-                <Pie data={empresaData} dataKey="value" nameKey="name" cx="50%" cy="48%" innerRadius={48} outerRadius={72} paddingAngle={4} stroke="none">
+                <Pie data={empresaData} dataKey="value" nameKey="name" cx="50%" cy="48%" innerRadius={54} outerRadius={80} paddingAngle={6} startAngle={90} endAngle={-270} stroke="#F8FBFC" strokeWidth={4}>
                   {empresaData.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
                 </Pie>
                 <text x="50%" y="47%" textAnchor="middle" dominantBaseline="middle" className="fill-slate-900 text-xl font-bold">{actas.length}</text>
                 <text x="50%" y="58%" textAnchor="middle" dominantBaseline="middle" className="fill-slate-500 text-[10px]">actas</text>
-                <Tooltip contentStyle={{ borderRadius: 12, border: "1px solid #CCFBF1", boxShadow: "0 10px 24px rgba(15,23,42,0.12)", fontSize: 12 }} />
+                <Tooltip content={<ChartTooltip />} />
                 <Legend iconType="circle" iconSize={7} wrapperStyle={{ fontSize: 11, color: "#64748B" }} />
               </PieChart>
             </ResponsiveContainer>
-          </div>
+            </div>
+          </ChartCard>
         </div>
 
         <div className="bg-white rounded-xl border border-slate-200">
@@ -209,13 +217,6 @@ export default function DashboardPage() {
   }
 
   // Aprobador / Costos / HSE / Planeación dashboard
-  const pendingApproval = actas.filter((a) => {
-    if (user.rol === "aprobador_area") return a.status === "pendiente_aprobacion_area";
-    if (user.rol === "costos") return a.status === "pendiente_costos";
-    if (user.rol === "hse") return a.status === "pendiente_hse";
-    return false;
-  });
-
   const myApproved = actas.filter((a) =>
     a.aprobaciones?.some((ap) => ap.aprobador === user.username && ap.status === "aprobado") ?? false
   );
@@ -230,42 +231,11 @@ export default function DashboardPage() {
         <p className="text-sm text-slate-500 mt-0.5">Bienvenido, {user.nombre}</p>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <StatCard label="Pendientes de Aprobación" value={pendingApproval.length}
-          icon={<Clock size={20} />} iconColor={pendingApproval.length > 0 ? "bg-amber-50 text-amber-600" : "bg-slate-50 text-slate-400"}
-          delta={pendingApproval.length > 0 ? "Requieren atención" : undefined}
-          onClick={() => navigate("/aprobaciones")} />
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <StatCard label="Aprobadas por mí" value={myApproved.length} icon={<CheckCircle size={20} />} iconColor="bg-green-50 text-green-700" onClick={() => navigate("/actas")} />
         <StatCard label="Rechazadas por mí" value={myRejected.length} icon={<XCircle size={20} />} iconColor="bg-red-50 text-red-600" onClick={() => navigate("/actas")} />
       </div>
 
-      <div className="bg-white rounded-xl border border-slate-200">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200">
-          <h2 className="text-sm font-semibold text-slate-700">Solicitudes pendientes de mi revisión</h2>
-          <button onClick={() => navigate("/aprobaciones")} className="text-xs text-blue-700 font-medium">Ver todas</button>
-        </div>
-        {pendingApproval.length === 0 ? (
-          <div className="text-center py-12 text-slate-400">
-            <CheckCircle size={36} className="mx-auto mb-2 opacity-30" />
-            <p className="text-sm">No hay actas pendientes de su revisión</p>
-          </div>
-        ) : (
-          <div className="divide-y divide-slate-100">
-            {pendingApproval.slice(0, 5).map((acta) => (
-              <div key={acta.id} className="flex items-center gap-3 px-5 py-3 hover:bg-slate-50 cursor-pointer" onClick={() => navigate(`/actas/${acta.id}`)}>
-                <div className="w-8 h-8 bg-amber-50 rounded-lg flex items-center justify-center shrink-0">
-                  <Clock size={15} className="text-amber-600" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-slate-800">{acta.consecutivo}</p>
-                  <p className="text-xs text-slate-500 truncate">{acta.descripcion} · {acta.solicitanteNombre}</p>
-                </div>
-                <ActaStatusBadge status={acta.status} />
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
     </div>
   );
 }

@@ -29,7 +29,7 @@ const NAV_ITEMS: NavItem[] = [
   { to: "/aprobaciones", label: "Pendientes de Aprobación", icon: <ClipboardCheck size={18} />, roles: ["aprobador_area", "costos", "hse"] },
   { to: "/usuarios", label: "Gestión de Usuarios", icon: <Users size={18} />, roles: ["administrador"] },
   { to: "/maestros/cecos", label: "Maestro CeCos", icon: <Building2 size={18} />, roles: ["costos"] },
-  { to: "/maestros/invima", label: "Maestro INVIMA", icon: <Package size={18} />, roles: ["planeacion"] },
+  { to: "/maestros/invima", label: "Maestro unificado", icon: <Package size={18} />, roles: ["planeacion"] },
   { to: "/reportes", label: "Reportes", icon: <BarChart3 size={18} />, roles: ["administrador", "aprobador_area", "costos", "hse", "planeacion"] },
   { to: "/busqueda", label: "Búsqueda Global", icon: <Search size={18} />, roles: ["administrador", "solicitante", "aprobador_area", "costos", "hse", "planeacion"] },
 ];
@@ -65,7 +65,12 @@ function getInitialCollapsed(): boolean {
   return stored === "true";
 }
 
-export function Sidebar() {
+interface SidebarProps {
+  mobileOpen?: boolean;
+  onMobileClose?: () => void;
+}
+
+export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps) {
   const { user, logout } = useAuth();
   const { getUserNotifications, solicitudes } = useApp();
 
@@ -104,7 +109,9 @@ export function Sidebar() {
 
   return (
     <aside
-      className={`${collapsed ? "w-[68px]" : "w-60"} relative flex h-full shrink-0 flex-col
+      className={`${collapsed ? "w-[68px]" : "w-60"} relative flex h-full min-w-0 shrink-0 flex-col
+        max-md:fixed max-md:inset-y-0 max-md:left-0 max-md:z-50 max-md:w-60 max-md:shadow-2xl
+        ${mobileOpen ? "max-md:translate-x-0" : "max-md:-translate-x-full"} md:translate-x-0
         bg-slate-950 dark:bg-slate-950 transition-[width] duration-200 ease-in-out shadow-[8px_0_30px_rgba(15,23,42,0.12)]`}
     >
       {/* Botón de colapsar */}
@@ -150,6 +157,7 @@ export function Sidebar() {
                   : "text-slate-400 hover:bg-slate-800 hover:text-white"
               }`
             }
+            onClick={onMobileClose}
           >
             <span className="shrink-0">{item.icon}</span>
             {!collapsed && <span className="flex-1 truncate">{item.label}</span>}
@@ -179,6 +187,7 @@ export function Sidebar() {
                 : "text-slate-400 hover:bg-slate-800 hover:text-white"
             }`
           }
+            onClick={onMobileClose}
         >
           <Bell size={18} />
           {!collapsed && <span className="flex-1">Notificaciones</span>}

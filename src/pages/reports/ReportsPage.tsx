@@ -1,12 +1,14 @@
 import { useState, useMemo } from "react";
 import { BarChart3, Download, Filter } from "lucide-react";
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LabelList } from "recharts";
 import { useApp } from "../../context/AppContext";
 import { ActaStatusBadge } from "../../components/ui/Badge";
+import ChartTooltip from "../../components/ui/ChartTooltip";
+import ChartCard from "../../components/ui/ChartCard";
 import { CAUSAL_LABELS, CLASIFICACION_LABELS, EMPRESAS } from "../../constants";
 import type { ActaStatus, Empresa } from "../../types";
 
-const COLORS = ["#0F766E", "#0369A1", "#D97706", "#E11D48", "#7C3AED", "#0891B2", "#65A30D", "#C026D3"];
+const COLORS = ["#0F766E", "#0284C7", "#F59E0B", "#E11D48", "#7C3AED", "#0891B2", "#65A30D", "#C026D3"];
 
 function numericValue(value: unknown): number {
   const number = Number(value);
@@ -42,11 +44,6 @@ export default function ReportsPage() {
   const byCausal = Object.entries(CAUSAL_LABELS).map(([k, v]) => ({
     name: v,
     total: filtered.filter((a) => a.causal === k).length,
-  })).filter((d) => d.total > 0);
-
-  const byClasificacion = Object.entries(CLASIFICACION_LABELS).map(([k, v]) => ({
-    name: v,
-    total: filtered.filter((a) => a.clasificacion === k).length,
   })).filter((d) => d.total > 0);
 
   const exportCSV = () => {
@@ -131,31 +128,36 @@ export default function ReportsPage() {
 
       {/* Charts */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-        <div className="chart-panel bg-white rounded-2xl border border-slate-200 p-5">
-          <div className="mb-4 flex items-start justify-between gap-3"><div><h3 className="text-sm font-semibold text-slate-800">Actas por empresa</h3><p className="mt-1 text-xs text-slate-500">Volumen y costo asociado</p></div><span className="chart-kicker">Comparativo</span></div>
-          <ResponsiveContainer width="100%" height={220}>
-            <BarChart data={byEmpresa}>
-              <defs><linearGradient id="reportCompanyBar" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#14B8A6" /><stop offset="100%" stopColor="#0369A1" /></linearGradient></defs>
-              <CartesianGrid vertical={false} strokeDasharray="4 4" stroke="#E2E8F0" />
-              <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: "#64748B" }} />
-              <YAxis allowDecimals={false} axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: "#64748B" }} />
-              <Tooltip cursor={{ fill: "rgba(20,184,166,0.08)" }} formatter={(v, n) => n === "costo" ? `COP ${Number(v).toLocaleString("es-CO")}` : v} contentStyle={{ borderRadius: 12, border: "1px solid #CCFBF1", boxShadow: "0 10px 24px rgba(15,23,42,0.12)", fontSize: 12 }} />
-              <Bar dataKey="total" fill="url(#reportCompanyBar)" radius={[6, 6, 0, 0]} maxBarSize={48} name="Actas" />
-            </BarChart>
+        <ChartCard title="Actas por empresa" description="Volumen y costo asociado" label="Comparativo">
+          <div className="chart-visual chart-visual-bar">
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={byEmpresa} margin={{ top: 18, right: 18, left: -12, bottom: 0 }}>
+              <CartesianGrid vertical={false} stroke="#DCEBED" strokeDasharray="2 6" />
+              <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: "#647B83" }} padding={{ left: 14, right: 14 }} />
+              <YAxis allowDecimals={false} axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: "#647B83" }} domain={[0, "dataMax + 1"]} />
+              <Tooltip cursor={{ stroke: "#99F6E4", strokeWidth: 1 }} content={<ChartTooltip />} />
+              <Line type="monotone" dataKey="total" name="Actas" stroke="#0F766E" strokeWidth={3} dot={{ r: 5, fill: "#0F766E", stroke: "#ffffff", strokeWidth: 2 }} activeDot={{ r: 7, fill: "#0284C7", stroke: "#ffffff", strokeWidth: 3 }} animationDuration={750}>
+                <LabelList dataKey="total" position="top" offset={10} fill="#0F766E" fontSize={11} fontWeight={700} />
+              </Line>
+            </LineChart>
           </ResponsiveContainer>
-        </div>
+          </div>
+        </ChartCard>
 
-        <div className="chart-panel bg-white rounded-2xl border border-slate-200 p-5">
-          <div className="mb-2 flex items-start justify-between gap-3"><div><h3 className="text-sm font-semibold text-slate-800">Por causal de destrucción</h3><p className="mt-1 text-xs text-slate-500">Distribución del motivo registrado</p></div><span className="chart-kicker">Causales</span></div>
-          <ResponsiveContainer width="100%" height={220}>
+        <ChartCard title="Por causal de destrucción" description="Distribución del motivo registrado" label="Causales">
+          <div className="chart-visual chart-visual-donut">
+          <ResponsiveContainer width="100%" height="100%">
             <PieChart>
-              <Pie data={byCausal} dataKey="total" nameKey="name" cx="50%" cy="50%" innerRadius={50} outerRadius={82} paddingAngle={3} stroke="none">
+              <Pie data={byCausal} dataKey="total" nameKey="name" cx="50%" cy="50%" innerRadius={58} outerRadius={86} paddingAngle={5} startAngle={90} endAngle={-270} stroke="#F8FBFC" strokeWidth={4}>
                 {byCausal.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
               </Pie>
-              <Tooltip contentStyle={{ borderRadius: 12, border: "1px solid #CCFBF1", boxShadow: "0 10px 24px rgba(15,23,42,0.12)", fontSize: 12 }} />
+              <text x="50%" y="47%" textAnchor="middle" dominantBaseline="middle" className="fill-slate-900 text-xl font-bold">{filtered.length}</text>
+              <text x="50%" y="59%" textAnchor="middle" dominantBaseline="middle" className="fill-slate-500 text-[10px]">actas</text>
+              <Tooltip content={<ChartTooltip />} />
             </PieChart>
           </ResponsiveContainer>
-          <div className="mt-2 flex flex-wrap gap-2">
+          </div>
+          <div className="chart-data-legend mt-3 flex flex-wrap gap-2">
             {byCausal.map((d, i) => (
               <div key={d.name} className="flex items-center gap-1 text-xs text-slate-600">
                 <div className="w-2 h-2 rounded-full" style={{ background: COLORS[i % COLORS.length] }} />
@@ -163,21 +165,8 @@ export default function ReportsPage() {
               </div>
             ))}
           </div>
-        </div>
+        </ChartCard>
 
-        <div className="chart-panel bg-white rounded-2xl border border-slate-200 p-5 lg:col-span-2">
-          <div className="mb-4 flex items-start justify-between gap-3"><div><h3 className="text-sm font-semibold text-slate-800">Por clasificación de material</h3><p className="mt-1 text-xs text-slate-500">Cantidad de actas por categoría</p></div><span className="chart-kicker">Materiales</span></div>
-          <ResponsiveContainer width="100%" height={220}>
-            <BarChart data={byClasificacion} layout="vertical">
-              <defs><linearGradient id="reportMaterialBar" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stopColor="#0F766E" /><stop offset="100%" stopColor="#0EA5E9" /></linearGradient></defs>
-              <CartesianGrid horizontal={false} strokeDasharray="4 4" stroke="#E2E8F0" />
-              <XAxis type="number" allowDecimals={false} axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: "#64748B" }} />
-              <YAxis type="category" dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: "#64748B" }} width={150} />
-              <Tooltip cursor={{ fill: "rgba(20,184,166,0.08)" }} contentStyle={{ borderRadius: 12, border: "1px solid #CCFBF1", boxShadow: "0 10px 24px rgba(15,23,42,0.12)", fontSize: 12 }} />
-              <Bar dataKey="total" fill="url(#reportMaterialBar)" radius={[0, 6, 6, 0]} maxBarSize={26} name="Actas" />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
       </div>
 
       {/* Table */}

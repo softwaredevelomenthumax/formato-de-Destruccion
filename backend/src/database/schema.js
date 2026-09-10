@@ -3,6 +3,10 @@ import { getPool } from './connection.js';
 export async function initializeDatabase() {
   const pool = getPool();
 
+  if (!pool) {
+    throw new Error('No hay una conexión activa a SQL Server para inicializar el esquema');
+  }
+
   try {
     // Crear tablas
     await pool.request().query(`
@@ -73,6 +77,7 @@ export async function initializeDatabase() {
         titulo NVARCHAR(255),
         mensaje NVARCHAR(MAX),
         tipo NVARCHAR(50),
+        actaId NVARCHAR(50),
         [read] BIT DEFAULT 0,
         createdAt DATETIME DEFAULT GETDATE(),
         FOREIGN KEY (userId) REFERENCES users(id)
@@ -156,6 +161,8 @@ export async function initializeDatabase() {
       IF COL_LENGTH('actas', 'ordenProduccion') IS NULL ALTER TABLE actas ADD ordenProduccion NVARCHAR(100);
       IF COL_LENGTH('actas', 'sustanciaControlada') IS NULL ALTER TABLE actas ADD sustanciaControlada BIT;
       IF COL_LENGTH('actas', 'registroINVIMA') IS NULL ALTER TABLE actas ADD registroINVIMA NVARCHAR(100);
+      IF COL_LENGTH('actas', 'estadoInvima') IS NULL ALTER TABLE actas ADD estadoInvima NVARCHAR(50);
+      IF COL_LENGTH('notifications', 'actaId') IS NULL ALTER TABLE notifications ADD actaId NVARCHAR(50);
       IF COL_LENGTH('actas', 'pesoKg') IS NULL ALTER TABLE actas ADD pesoKg FLOAT;
       IF COL_LENGTH('actas', 'cantidadUnidades') IS NULL ALTER TABLE actas ADD cantidadUnidades FLOAT;
       IF COL_LENGTH('actas', 'costoDestruccion') IS NULL ALTER TABLE actas ADD costoDestruccion FLOAT;
@@ -166,6 +173,12 @@ export async function initializeDatabase() {
       IF COL_LENGTH('invima_products', 'empresa') IS NULL ALTER TABLE invima_products ADD empresa NVARCHAR(100);
       IF COL_LENGTH('invima_products', 'requiereSap') IS NULL ALTER TABLE invima_products ADD requiereSap BIT DEFAULT 1;
       IF COL_LENGTH('invima_products', 'requiereInvima') IS NULL ALTER TABLE invima_products ADD requiereInvima BIT DEFAULT 1;
+      IF COL_LENGTH('invima_products', 'fabricante') IS NULL ALTER TABLE invima_products ADD fabricante NVARCHAR(255);
+      IF COL_LENGTH('invima_products', 'clase') IS NULL ALTER TABLE invima_products ADD clase NVARCHAR(100);
+      IF COL_LENGTH('invima_products', 'estatusSap') IS NULL ALTER TABLE invima_products ADD estatusSap NVARCHAR(50) DEFAULT 'Activo';
+      IF COL_LENGTH('invima_products', 'codigo') IS NULL ALTER TABLE invima_products ADD codigo NVARCHAR(100);
+      IF COL_LENGTH('invima_products', 'canal') IS NULL ALTER TABLE invima_products ADD canal NVARCHAR(100);
+      IF COL_LENGTH('invima_products', 'estadoInvima') IS NULL ALTER TABLE invima_products ADD estadoInvima NVARCHAR(50);
       IF COL_LENGTH('actas', 'cecoId') IS NULL ALTER TABLE actas ADD cecoId NVARCHAR(50);
       IF COL_LENGTH('actas', 'invimaProductId') IS NULL ALTER TABLE actas ADD invimaProductId NVARCHAR(50);
       IF COL_LENGTH('actas', 'sapCodeId') IS NULL ALTER TABLE actas ADD sapCodeId NVARCHAR(50);
@@ -188,5 +201,6 @@ export async function initializeDatabase() {
     console.log('✓ Tablas creadas exitosamente');
   } catch (error) {
     console.error('Error inicializando base de datos:', error.message);
+    throw error;
   }
 }

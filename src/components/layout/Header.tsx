@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useLocation, useNavigate } from "react-router";
-import { Bell, Search, ChevronRight } from "lucide-react";
+import { Bell, Search, ChevronRight, Menu } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import { useApp } from "../../context/AppContext";
 
@@ -11,14 +11,18 @@ const BREADCRUMB_MAP: Record<string, string> = {
   usuarios: "Gestión de Usuarios",
   maestros: "Maestros",
   cecos: "Centros de Costos",
-  invima: "Registro INVIMA",
+  invima: "Maestro Unificado de Materiales",
   reportes: "Reportes",
   busqueda: "Búsqueda Global",
   notificaciones: "Notificaciones",
   aprobaciones: "Pendientes de Aprobación",
 };
 
-export function Header() {
+interface HeaderProps {
+  onMenuClick?: () => void;
+}
+
+export function Header({ onMenuClick }: HeaderProps) {
   const { user } = useAuth();
   const { getUserNotifications } = useApp();
   const location = useLocation();
@@ -44,7 +48,16 @@ export function Header() {
   };
 
   return (
-    <header className="h-16 bg-white/90 backdrop-blur-md border-b border-slate-200/80 flex items-center px-6 gap-4 shrink-0 shadow-[0_1px_12px_rgba(15,23,42,0.03)]">
+    <header className="flex h-16 shrink-0 items-center gap-3 border-b border-slate-200/80 bg-white/90 px-3 shadow-[0_1px_12px_rgba(15,23,42,0.03)] backdrop-blur-md sm:gap-4 sm:px-6">
+      <button
+        type="button"
+        onClick={onMenuClick}
+        className="rounded-lg p-2 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800 md:hidden"
+        title="Abrir menú"
+        aria-label="Abrir menú de navegación"
+      >
+        <Menu size={19} />
+      </button>
       {/* Breadcrumbs */}
       <nav className="flex items-center gap-1 flex-1 min-w-0">
         {crumbs.map((crumb, i) => (

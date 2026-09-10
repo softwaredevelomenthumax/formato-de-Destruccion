@@ -21,11 +21,13 @@ cp .env.example .env
 
 ```env
 # SQL Server
-DB_SERVER=tu-servidor-sql-server
+DB_HOST=tu-servidor-sql-server
 DB_USER=tu-usuario
 DB_PASSWORD=tu-contraseña
-DB_DATABASE=destruccion_gestion
+DB_NAME=DestruccionDB
 DB_PORT=1433
+DB_ENCRYPT=false
+DB_TRUST_CERT=true
 
 # Server
 PORT=3001
@@ -129,10 +131,11 @@ backend/
 ## Configuración de SQL Server
 
 ### Conexión remota
-Para conectar a un SQL Server remoto, asegúrate de que:
+El backend toma la conexión exclusivamente de las variables `DB_*` del archivo `.env`. Todas las operaciones de la API y la inicialización del esquema se ejecutan contra esa instancia. Para conectar a un SQL Server remoto, asegúrate de que:
 1. El puerto 1433 esté abierto
 2. Las credenciales sean correctas
-3. `trustServerCertificate: true` en caso de certificados auto-firmados
+3. `DB_TRUST_CERT=true` en caso de certificados auto-firmados
+4. `DB_ENCRYPT=true` si el servidor exige conexión cifrada
 
 ### Crear base de datos (SQL Server Management Studio)
 
@@ -141,7 +144,7 @@ CREATE DATABASE destruccion_gestion;
 GO
 ```
 
-El backend creará automáticamente las tablas al iniciar.
+El backend creará o actualizará automáticamente las tablas al iniciar, pero no arranca si no puede conectarse a la base configurada.
 
 ## Notas de seguridad
 

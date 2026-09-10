@@ -46,6 +46,7 @@ interface AppContextType {
 
   // Notifications
   markNotificationRead: (id: string) => Promise<void>;
+  deleteNotification: (id: string) => Promise<void>;
   markAllNotificationsRead: (userId: string) => Promise<void>;
   addNotification: (n: Omit<Notification, "id" | "createdAt">) => Promise<void>;
   getUserNotifications: (userId: string) => Notification[];
@@ -64,8 +65,19 @@ function asArray<T>(value: unknown): T[] {
   return Array.isArray(value) ? value as T[] : [];
 }
 
+function asBoolean(value: unknown): boolean {
+  if (typeof value === "boolean") return value;
+  if (typeof value === "number") return value === 1;
+  if (typeof value === "string") return ["1", "true", "si", "sí"].includes(value.trim().toLowerCase());
+  return false;
+}
+
+const COSTOS_REVIEW_THRESHOLD = 500000;
+
 function requiresCostos(acta: Partial<Acta>): boolean {
-  const { clasificacion, fechaVencimiento, causal } = acta;
+  const { clasificacion, fechaVencimiento, causal, costoDestruccion } = acta;
+  const costo = Number(costoDestruccion);
+  if (Number.isFinite(costo) && costo >= COSTOS_REVIEW_THRESHOLD) return true;
   if (!fechaVencimiento) return false;
   const venc = new Date(fechaVencimiento);
   const now = new Date();
@@ -80,7 +92,7 @@ function requiresCostos(acta: Partial<Acta>): boolean {
 }
 
 export function AppProvider({ children }: { children: ReactNode }) {
-  const { token } = useAuth();
+  const { token, user } = useAuth();
   const [users, setUsers] = useState<User[]>([]);
   const [actas, setActas] = useState<Acta[]>([]);
   const [notifications, setNotifications] = useState<Notification[]>([]);
@@ -122,6 +134,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setSolicitudes([]);
     setInvimaProducts([]);
   }, [loadData, token]);
+
+  useEffect(() => {
+    if (token && user?.id) {
+      loadNotifications(user.id);
+    } else {
+      setNotifications([]);
+    }
+  }, [token, user?.id]);
 
   // Users
   const createUser = async (u: Omit<User, "id" | "createdAt">) => {
@@ -224,11 +244,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const sendActa = async (id: string, userId: string, userName: string) => {
     try {
-      const acta = actas.find((a) => a.id === id);
-      if (!acta) return;
-      
-      const rc = requiresCostos(acta);
+      const acta = actas.find((a) => a.id === id) || await api.getActa(id).catch(() => null);
       const newStatus: ActaStatus = "pendiente_aprobacion_area";
+      if (!acta) throw new Error("No se encontró el acta para enviarla a aprobación");
+
+      const rc = requiresCostos(acta);
       
       await updateActa(id, {
         status: newStatus,
@@ -249,8 +269,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
           message: `El acta ${acta.consecutivo} requiere su aprobación de área.`,
           type: "info",
           read: false,
+          actaId: acta.id,
         });
       }
+      await addNotification({
+        userId,
+        title: "Acta enviada a aprobación",
+        message: `El acta ${acta.consecutivo} fue enviada correctamente y está pendiente de revisión del aprobador de área.`,
+        type: "success",
+        read: false,
+        actaId: acta.id,
+      });
     } catch (error) {
       console.error("Error enviando acta:", error);
       throw error;
@@ -266,7 +295,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
       // Actualizar estado local
       let nextStatus: ActaStatus = acta.status;
-      const updatedAprobaciones = acta.aprobaciones.map((ap) =>
+      const updatedAprobaciones = asArray<ActaAprobacion>(acta.aprobaciones).map((ap) =>
         ap.paso === paso ? { ...ap, status: "aprobado" as const } : ap
       );
 
@@ -281,6 +310,45 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setActas((current) => asArray<Acta>(current).map((a) =>
         a.id === actaId ? { ...a, status: nextStatus, aprobaciones: updatedAprobaciones } : a
       ));
+
+      const approvalStepLabel = paso === "area" ? "Aprobación de Área" : paso === "costos" ? "Costos" : "HSE";
+      const nextStatusLabel = nextStatus === "pendiente_costos"
+        ? "pendiente de revisión por Costos"
+        : nextStatus === "pendiente_hse"
+          ? "pendiente de revisión por HSE"
+          : nextStatus === "aprobada"
+            ? "aprobada completamente"
+            : nextStatus;
+      const nextRole = nextStatus === "pendiente_costos"
+        ? "costos"
+        : nextStatus === "pendiente_hse"
+          ? "hse"
+          : null;
+      const involvedRoles = new Set(["aprobador_area"]);
+      if (acta.requiereCostos) involvedRoles.add("costos");
+      if (nextRole) involvedRoles.add(nextRole);
+      const involvedApprovers = users.filter((u) => involvedRoles.has(u.rol) && u.status === "activo");
+      const notifications = [
+        {
+          userId: acta.solicitanteId,
+          title: "Actualización de tu acta",
+          message: `El acta ${acta.consecutivo} fue aprobada en ${approvalStepLabel} y ahora está ${nextStatusLabel}.`,
+          type: nextStatus === "aprobada" ? "success" as const : "info" as const,
+          read: false,
+          actaId: acta.id,
+        },
+        ...involvedApprovers.map((approver) => ({
+          userId: approver.id,
+          title: nextRole && approver.rol === nextRole ? "Acta pendiente de aprobación" : "Actualización del flujo de aprobación",
+          message: nextRole && approver.rol === nextRole
+            ? `El acta ${acta.consecutivo} requiere su revisión en ${nextRole === "costos" ? "Costos" : "HSE"}.`
+            : `El acta ${acta.consecutivo} fue aprobada en ${approvalStepLabel} y ahora está ${nextStatusLabel}.`,
+          type: "info" as const,
+          read: false,
+          actaId: acta.id,
+        })),
+      ];
+      await Promise.all(notifications.map((notification) => addNotification(notification)));
     } catch (error) {
       console.error("Error aprobando acta:", error);
       throw error;
@@ -294,7 +362,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
       await api.rejectActa(actaId, { paso, aprobador, motivo });
 
-      const updatedAprobaciones = acta.aprobaciones.map((ap) =>
+      const updatedAprobaciones = asArray<ActaAprobacion>(acta.aprobaciones).map((ap) =>
         ap.paso === paso ? { ...ap, status: "rechazado" as const } : ap
       );
 
@@ -309,6 +377,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         message: `Su acta ${acta.consecutivo} fue rechazada.`,
         type: "error",
         read: false,
+        actaId: acta.id,
       });
     } catch (error) {
       console.error("Error rechazando acta:", error);
@@ -323,7 +392,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
       await api.updateActa(actaId, { status: "devuelta_ajustes" });
 
-      const updatedAprobaciones = acta.aprobaciones.map((ap) =>
+      const updatedAprobaciones = asArray<ActaAprobacion>(acta.aprobaciones).map((ap) =>
         ap.paso === paso ? { ...ap, status: "devuelto" as const } : ap
       );
 
@@ -338,6 +407,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         message: `Su acta ${acta.consecutivo} requiere correcciones.`,
         type: "warning",
         read: false,
+        actaId: acta.id,
       });
     } catch (error) {
       console.error("Error devolviendo acta:", error);
@@ -349,7 +419,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const loadNotifications = async (userId: string) => {
     try {
       const data = await api.getNotifications(userId);
-      setNotifications(asArray<Notification>(data));
+      setNotifications(asArray<Record<string, unknown>>(data).map((item) => ({
+        id: String(item.id || ""),
+        userId: String(item.userId || ""),
+        title: String(item.title || item.titulo || "Notificación"),
+        message: String(item.message || item.mensaje || ""),
+        type: (item.type || item.tipo || "info") as Notification["type"],
+        read: asBoolean(item.read),
+        createdAt: String(item.createdAt || new Date().toISOString()),
+        actaId: item.actaId ? String(item.actaId) : undefined,
+      })));
     } catch (error) {
       console.error("Error cargando notificaciones:", error);
     }
@@ -361,6 +440,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setNotifications((current) => asArray<Notification>(current).map((n) => n.id === id ? { ...n, read: true } : n));
     } catch (error) {
       console.error("Error marcando notificación como leída:", error);
+      throw error;
+    }
+  };
+
+  const deleteNotification = async (id: string) => {
+    try {
+      await api.deleteNotification(id);
+      setNotifications((current) => asArray<Notification>(current).filter((notification) => notification.id !== id));
+    } catch (error) {
+      console.error("Error eliminando notificación:", error);
       throw error;
     }
   };
@@ -427,7 +516,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       users, actas, notifications, solicitudes, invimaProducts, loading,
       createUser, updateUser, deleteUser, registerSolicitud, approveSolicitud, rejectSolicitud,
       createActa, updateActa, deleteActa, sendActa, approveActa, rejectActa, returnActa,
-      markNotificationRead, markAllNotificationsRead, addNotification, getUserNotifications, loadNotifications,
+      markNotificationRead, deleteNotification, markAllNotificationsRead, addNotification, getUserNotifications, loadNotifications,
       addInvimaProduct, updateInvimaProduct, deleteInvimaProduct, loadData,
     }}>
       {children}

@@ -2,7 +2,7 @@
 const defaultApiUrl = typeof window !== "undefined"
 	? `http://${window.location.hostname}:3002/api`
 	: "http://localhost:3002/api";
-const API_BASE_URL = (import.meta.env.VITE_API_URL || defaultApiUrl).replace(/\/+$/, "");
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_URL || defaultApiUrl).replace(/\/+$/, "");
 
 async function parseResponse(response) {
 	const text = await response.text();
@@ -49,6 +49,7 @@ export const api = {
 	getNotifications: (userId) => fetch(`${API_BASE_URL}/notifications/user/${userId}`, { headers: getHeaders() }).then((r) => r.json()),
 	createNotification: (notification) => fetch(`${API_BASE_URL}/notifications`, { method: "POST", headers: getHeaders(), body: JSON.stringify(notification) }).then((r) => r.json()),
 	markNotificationRead: (id) => fetch(`${API_BASE_URL}/notifications/${id}/read`, { method: "PUT", headers: getHeaders() }).then((r) => r.json()),
+	deleteNotification: (id) => fetchJson(`${API_BASE_URL}/notifications/${id}`, { method: "DELETE", headers: getHeaders() }),
 	markAllNotificationsRead: (userId) => fetch(`${API_BASE_URL}/notifications/user/${userId}/read-all`, { method: "PUT", headers: getHeaders() }).then((r) => r.json()),
 	getSolicitudes: () => fetch(`${API_BASE_URL}/solicitudes`, { headers: getHeaders() }).then((r) => r.json()),
 	createSolicitud: (solicitud) => fetch(`${API_BASE_URL}/solicitudes`, { method: "POST", headers: getHeaders(), body: JSON.stringify(solicitud) }).then((r) => r.json()),

@@ -1,6 +1,6 @@
+import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
-import dotenv from 'dotenv';
 import { connectDatabase } from './database/connection.js';
 import { initializeDatabase } from './database/schema.js';
 
@@ -13,8 +13,6 @@ import solicitudesRoutes from './routes/solicitudes.js';
 import invimaRoutes from './routes/invima.js';
 import cecosRoutes from './routes/cecos.js';
 import sapRoutes from './routes/sap.js';
-
-dotenv.config(); // Recargar configuración - debug login
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -100,11 +98,7 @@ async function start() {
     });
   } catch (error) {
     console.error('Error iniciando servidor:', error);
-    // No salir si falla la conexión, arrancar de todas formas
-    console.log('\n⚠️  Servidor arrancando sin BD. Verifica tu configuración de SQL Server.\n');
-    app.listen(PORT, '0.0.0.0', () => {
-      console.log(`✓ Servidor ejecutándose en puerto ${PORT} (sin BD)`);
-    });
+    process.exitCode = 1;
   }
 }
 

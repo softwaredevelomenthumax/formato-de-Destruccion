@@ -3,20 +3,29 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
-const dbName = process.env.DB_NAME || 'DestruccionDB';
+const dbName = process.env.DB_NAME || process.env.DB_DATABASE || 'DestruccionDB';
+const dbHost = process.env.DB_HOST || process.env.DB_SERVER || 'localhost';
+const dbPort = Number.parseInt(process.env.DB_PORT || '1433', 10);
+const connectionTimeout = Number.parseInt(process.env.DB_CONNECTION_TIMEOUT || '15000', 10);
+const requestTimeout = Number.parseInt(process.env.DB_REQUEST_TIMEOUT || '30000', 10);
+const poolMax = Number.parseInt(process.env.DB_POOL_MAX || '30', 10);
+const asBoolean = (value, fallback) => {
+  if (value === undefined) return fallback;
+  return ['true', '1', 'yes'].includes(String(value).toLowerCase());
+};
 
 const config = {
-  server: process.env.DB_HOST || 'localhost',
-  port: parseInt(process.env.DB_PORT || '1433'),
+  server: dbHost,
+  port: dbPort,
   user: process.env.DB_USER || 'sa',
   password: process.env.DB_PASSWORD || '',
   database: dbName,
-  trustServerCertificate: true,
-  encrypt: false,
-  connectionTimeout: parseInt(process.env.DB_CONNECTION_TIMEOUT || '15000'),
-  requestTimeout: parseInt(process.env.DB_REQUEST_TIMEOUT || '30000'),
+  encrypt: asBoolean(process.env.DB_ENCRYPT, false),
+  trustServerCertificate: asBoolean(process.env.DB_TRUST_CERT, true),
+  connectionTimeout,
+  requestTimeout,
   pool: {
-    max: 30,
+    max: poolMax,
     min: 0,
     idleTimeoutMillis: 30000,
   },
@@ -25,34 +34,17 @@ const config = {
 let pool = null;
 
 export async function connectDatabase() {
+  if (pool) return pool;
+
   try {
     pool = new sql.ConnectionPool(config);
     await pool.connect();
-    console.log('✓ Conectado a SQL Server');
-    
-    // Crear la base de datos si no existe
-    try {
-      const masterPool = new sql.ConnectionPool({
-        ...config,
-        database: 'master',
-      });
-      await masterPool.connect();
-      
-      await masterPool.request().query(`
-        IF NOT EXISTS (SELECT 1 FROM sys.databases WHERE name = '${dbName}')
-        CREATE DATABASE ${dbName}
-      `);
-      
-      await masterPool.close();
-      console.log(`✓ Base de datos ${dbName} lista`);
-    } catch (err) {
-      console.log(`📝 Base de datos ${dbName} ya existe`);
-    }
-    
+    console.log(`✓ Conectado a SQL Server ${dbHost}:${dbPort}/${dbName}`);
     return pool;
   } catch (error) {
+    pool = null;
     console.error('✗ Error conectando a SQL Server:', error.message);
-    return null;
+    throw new Error(`No se pudo conectar a la base de datos ${dbName} en ${dbHost}:${dbPort}: ${error.message}`);
   }
 }
 
@@ -63,6 +55,7 @@ export function getPool() {
 export async function closeDatabase() {
   if (pool) {
     await pool.close();
+    pool = null;
     console.log('Conexión a SQL Server cerrada');
   }
 }

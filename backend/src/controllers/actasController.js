@@ -28,7 +28,7 @@ export async function createActa(req, res) {
     const {
       status = 'borrador', empresa, centroCostos, fecha, solicitanteId, solicitanteNombre,
       responsable, area, descripcion, codigoSAP, numeroLote, ordenProduccion,
-      sustanciaControlada, clasificacion, fechaVencimiento, registroINVIMA,
+      sustanciaControlada, clasificacion, fechaVencimiento, registroINVIMA, estadoInvima,
       pesoKg, cantidadUnidades, costoDestruccion, causal, otraCausal, observaciones,
       adjuntos, requiereCostos, cecoId, invimaProductId, sapCodeId,
     } = req.body;
@@ -56,6 +56,7 @@ export async function createActa(req, res) {
       .input('clasificacion', clasificacion)
       .input('fechaVencimiento', fechaVencimiento)
       .input('registroINVIMA', registroINVIMA)
+      .input('estadoInvima', estadoInvima)
       .input('pesoKg', pesoKg)
       .input('cantidadUnidades', cantidadUnidades)
       .input('costoDestruccion', costoDestruccion)
@@ -69,8 +70,8 @@ export async function createActa(req, res) {
       .input('sapCodeId', sapCodeId)
       .query(`
         INSERT INTO actas 
-        (id, consecutivo, status, empresa, centroCostos, fecha, solicitanteId, solicitanteNombre, responsable, area, descripcion, codigoSAP, numeroLote, ordenProduccion, sustanciaControlada, clasificacion, fechaVencimiento, registroINVIMA, pesoKg, cantidadUnidades, costoDestruccion, causal, otraCausal, observaciones, adjuntos, requiereCostos, cecoId, invimaProductId, sapCodeId)
-        VALUES (@id, @consecutivo, @status, @empresa, @centroCostos, @fecha, @solicitanteId, @solicitanteNombre, @responsable, @area, @descripcion, @codigoSAP, @numeroLote, @ordenProduccion, @sustanciaControlada, @clasificacion, @fechaVencimiento, @registroINVIMA, @pesoKg, @cantidadUnidades, @costoDestruccion, @causal, @otraCausal, @observaciones, @adjuntos, @requiereCostos, @cecoId, @invimaProductId, @sapCodeId)
+        (id, consecutivo, status, empresa, centroCostos, fecha, solicitanteId, solicitanteNombre, responsable, area, descripcion, codigoSAP, numeroLote, ordenProduccion, sustanciaControlada, clasificacion, fechaVencimiento, registroINVIMA, estadoInvima, pesoKg, cantidadUnidades, costoDestruccion, causal, otraCausal, observaciones, adjuntos, requiereCostos, cecoId, invimaProductId, sapCodeId)
+        VALUES (@id, @consecutivo, @status, @empresa, @centroCostos, @fecha, @solicitanteId, @solicitanteNombre, @responsable, @area, @descripcion, @codigoSAP, @numeroLote, @ordenProduccion, @sustanciaControlada, @clasificacion, @fechaVencimiento, @registroINVIMA, @estadoInvima, @pesoKg, @cantidadUnidades, @costoDestruccion, @causal, @otraCausal, @observaciones, @adjuntos, @requiereCostos, @cecoId, @invimaProductId, @sapCodeId)
       `);
 
     // Crear historial inicial
