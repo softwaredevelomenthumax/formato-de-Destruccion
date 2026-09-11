@@ -1,6 +1,7 @@
 import { getPool } from '../database/connection.js';
 import { v4 as uuidv4 } from 'uuid';
 import bcryptjs from 'bcryptjs';
+import { sendNotificationEmail } from '../services/emailService.js';
 
 // Crear usuario
 export async function createUser(req, res) {
@@ -76,6 +77,9 @@ export async function updateUser(req, res) {
     const { nombre, email, area, rol, status, password } = req.body;
     const pool = getPool();
 
+    const existing = await pool.request().input('id', id).query('SELECT id FROM users WHERE id = @id');
+    if (!existing.recordset[0]) return res.status(404).json({ error: 'Usuario no encontrado' });
+
     const queryParts = [
       'nombre = @nombre',
       'email = @email',
@@ -88,7 +92,7 @@ export async function updateUser(req, res) {
     const request = pool.request()
       .input('id', id)
       .input('nombre', nombre)
-      .input('email', email)
+      .input('email', typeof email === 'string' ? email.trim() || null : email)
       .input('area', area)
       .input('rol', rol)
       .input('status', status);
@@ -105,7 +109,10 @@ export async function updateUser(req, res) {
         WHERE id = @id
       `);
 
-    res.json({ message: 'Usuario actualizado' });
+    const updated = await pool.request()
+      .input('id', id)
+      .query('SELECT id, username, nombre, email, area, rol, status, createdAt FROM users WHERE id = @id');
+    res.json({ message: 'Usuario actualizado', user: updated.recordset[0] });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -134,6 +141,44 @@ export async function deleteUser(req, res) {
       .query('DELETE FROM users WHERE id = @id');
 
     res.json({ message: 'Usuario eliminado' });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+}
+
+// Envío manual para comprobar la configuración SMTP con el correo registrado.
+export async function sendTestEmail(req, res) {
+  try {
+    const { id } = req.params;
+    console.info(`Iniciando correo de prueba para el usuario ${id}`);
+    const result = await getPool().request()
+      .input('id', id)
+      .query("SELECT id, nombre, email, rol, status FROM users WHERE id = @id");
+    const user = result.recordset[0];
+
+    if (!user) return res.status(404).json({ error: 'Usuario no encontrado' });
+    if (user.status !== 'activo') return res.status(400).json({ error: 'El usuario debe estar activo para recibir el correo de prueba' });
+    if (!user.email) return res.status(400).json({ error: 'El usuario no tiene un correo registrado' });
+
+    const email = await sendNotificationEmail({
+      to: user.email,
+      recipientName: user.nombre,
+      title: 'Bienvenido a Gestión de Actas',
+      message: 'Este es un correo de prueba. Tu dirección corporativa quedó registrada correctamente y recibirás avisos cuando tengas un acta pendiente o una actualización en el flujo.',
+    });
+    console.info(`Resultado del correo de prueba para ${id}: ${email.sent ? 'enviado' : email.reason}`);
+
+    if (!email.sent) {
+      if (email.reason === 'smtp_timeout') {
+        return res.status(502).json({
+          error: 'No se pudo conectar al servidor SMTP. Verifique que la red o el firewall permitan conexiones salientes a smtp.office365.com por el puerto 587.',
+          email,
+        });
+      }
+      return res.status(502).json({ error: 'No se pudo enviar el correo de prueba. Revise la configuración SMTP del backend.', email });
+    }
+
+    res.json({ message: 'Correo de prueba enviado', email });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }

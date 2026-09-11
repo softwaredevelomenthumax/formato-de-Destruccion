@@ -41,6 +41,15 @@ export default function ReportsPage() {
     costo: filtered.filter((a) => a.empresa === e).reduce((s, a) => s + numericValue(a.costoDestruccion), 0),
   }));
 
+  const byArea = Object.values(filtered.reduce<Record<string, { area: string; total: number; costo: number }>>((acc, acta) => {
+    const area = acta.area || "Sin área";
+    const current = acc[area] || { area, total: 0, costo: 0 };
+    current.total += 1;
+    current.costo += numericValue(acta.costoDestruccion);
+    acc[area] = current;
+    return acc;
+  }, {})).sort((a, b) => b.costo - a.costo);
+
   const byCausal = Object.entries(CAUSAL_LABELS).map(([k, v]) => ({
     name: v,
     total: filtered.filter((a) => a.causal === k).length,
@@ -167,6 +176,19 @@ export default function ReportsPage() {
           </div>
         </ChartCard>
 
+      </div>
+
+      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+        <div className="px-5 py-3 border-b border-slate-200 bg-slate-50">
+          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Dinero destruido por área</p>
+          <p className="text-xs text-slate-500 mt-1">Contador acumulado de costo de destrucción para los filtros seleccionados.</p>
+        </div>
+        {byArea.length === 0 ? <p className="p-6 text-center text-sm text-slate-500">No hay costos registrados para mostrar.</p> : <div className="divide-y divide-slate-100">{byArea.map((item) => (
+          <div key={item.area} className="flex items-center justify-between gap-4 px-5 py-3">
+            <div><p className="text-sm font-semibold text-slate-800">{item.area}</p><p className="text-xs text-slate-500">{item.total} {item.total === 1 ? "acta" : "actas"}</p></div>
+            <p className="text-base font-bold text-teal-700">COP {item.costo.toLocaleString("es-CO")}</p>
+          </div>
+        ))}</div>}
       </div>
 
       {/* Table */}

@@ -22,7 +22,7 @@ const ACTA_DRAFT_STORAGE_KEY = "humax-acta-draft";
 
 const STEPS = [
   { label: "Info General" },
-  { label: "Clasificación" },
+  { label: "Condición de control" },
   { label: "Material" },
   { label: "Económica" },
   { label: "Causal" },
@@ -34,7 +34,9 @@ const MATERIAL_CLASSIFICATIONS = [
   { value: "PT", label: "Producto terminado", detail: "Se consulta en el maestro INVIMA" },
   { value: "ME", label: "Material de empaque", detail: "Se consulta en el maestro SAP" },
   { value: "MP", label: "Materia prima", detail: "Se consulta en el maestro SAP" },
+  { value: "ST", label: "Semiterminado", detail: "Se consulta en el maestro de materiales" },
   { value: "SQ", label: "Sustancia química", detail: "Se consulta en el maestro SAP" },
+  { value: "reactivos", label: "Material de laboratorio", detail: "UNBW o material de laboratorio" },
   { value: "residuo_comun", label: "Común o residuo común peligroso", detail: "Puede usar N/A en INVIMA" },
   { value: "residuo_aprovechable", label: "Residuo aprovechable", detail: "Información manual" },
 ] as const;
@@ -192,7 +194,7 @@ const step2Schema = z.object({
     .refine((value) => value === true || value === false, {
       message: "Seleccione si o no",
     }),
-  clasificacion: z.enum(["PT", "ME", "MP", "SQ", "residuo_comun", "residuo_aprovechable", "materia_prima", "producto_semiterminado", "granel", "producto_terminado", "material_empaque", "reactivos", "remanentes", "muestras", "otro"] as const),
+  clasificacion: z.enum(["PT", "ME", "MP", "ST", "SQ", "residuo_comun", "residuo_aprovechable", "materia_prima", "producto_semiterminado", "granel", "producto_terminado", "material_empaque", "reactivos", "remanentes", "muestras", "otro"] as const),
   fechaVencimiento: z
     .any()
     .refine((value) => typeof value === "string" && value.trim().length > 0, {
@@ -325,7 +327,7 @@ export default function ActaCreatePage() {
       area: user?.area || "",
     },
   });
-  const form2 = useForm<Step2Data>({ resolver: zodResolver(step2Schema), defaultValues: { clasificacion: "PT", estadoInvima: "N/A" } });
+  const form2 = useForm<Step2Data>({ resolver: zodResolver(step2Schema), defaultValues: { estadoInvima: "N/A" } });
   const form3 = useForm<Step3Data>({
     resolver: zodResolver(step3Schema),
     defaultValues: { pesoKg: 0, cantidadUnidades: 0, costoDestruccion: 0 },
@@ -478,16 +480,22 @@ export default function ActaCreatePage() {
 
   const filteredInvima = invimaProducts.filter((p) =>
     (!p.empresa || p.empresa === empresaWatch) &&
-    (p.productName.toLowerCase().includes(invimaSearch.toLowerCase()) ||
-      p.registryNumber.toLowerCase().includes(invimaSearch.toLowerCase()))
+    p.controlado === form2.watch("sustanciaControlada") &&
+    [p.productName, p.registryNumber, p.codigo || ""].some((value) => value.toLowerCase().includes(invimaSearch.toLowerCase()))
   );
 
   const selectInvima = async (product: InvimaProduct) => {
     form2.setValue("invimaProductId", product.id);
     form2.setValue("registroINVIMA", product.registryNumber);
-    form2.setValue("estadoInvima", product.estadoInvima || product.internalStatus);
     if (product.codigo) form2.setValue("codigoSAP", product.codigo, { shouldValidate: true });
-    form2.setValue("descripcion", `${product.productName}${product.presentacion ? " - " + product.presentacion : ""}`);
+    form2.setValue("descripcion", product.productName);
+    const masterType = (product.clase || "").toUpperCase();
+    const classification = masterType.includes("ROH") || masterType.includes("MP") ? "MP"
+      : masterType.includes("FERT") || masterType.includes("PT") ? "PT"
+      : masterType.includes("HALB") || masterType.includes("ST") ? "ST"
+      : masterType.includes("UNBW") ? "reactivos"
+      : masterType === "ME" ? "ME" : undefined;
+    if (classification) form2.setValue("clasificacion", classification as Step2Data["clasificacion"], { shouldValidate: true, shouldDirty: true });
     setInvimaSearch(product.registryNumber);
     setShowInvimaDropdown(false);
     setShowInvimaModal(false);
@@ -501,8 +509,15 @@ export default function ActaCreatePage() {
 
   const filteredSapCodes = sapCodes.filter((sap) => {
     const query = sapSearch.toLowerCase().trim();
-    return !query || [sap.codigo, sap.descripcion || "", sap.presentacion || ""].some((value) => value.toLowerCase().includes(query));
+    const material = invimaProducts.find((product) => product.id === sap.invimaProductId || product.codigo === sap.codigo);
+    return (!material || material.controlado === form2.watch("sustanciaControlada")) && (!query || [sap.codigo, sap.descripcion || "", sap.presentacion || ""].some((value) => value.toLowerCase().includes(query)));
   });
+
+  const selectedMasterMaterial = invimaProducts.find((product) =>
+    product.id === form2.watch("invimaProductId") || product.codigo === form2.watch("codigoSAP")
+  );
+  const masterType = (selectedMasterMaterial?.clase || "").toUpperCase();
+  const classificationLocked = !!selectedMasterMaterial && (masterType.includes("ROH") || masterType === "MP" || masterType.includes("FERT") || masterType === "PT" || masterType.includes("HALB") || masterType === "ST" || masterType.includes("UNBW") || masterType === "ME");
 
   const selectSap = (sap: SapCode) => {
     form2.setValue("codigoSAP", sap.codigo, { shouldValidate: true });
@@ -511,12 +526,29 @@ export default function ActaCreatePage() {
     if (material) {
       form2.setValue("invimaProductId", material.id);
       form2.setValue("registroINVIMA", material.registryNumber || "N/A");
-      form2.setValue("estadoInvima", material.estadoInvima || material.internalStatus || "N/A");
-      form2.setValue("descripcion", `${material.productName}${material.presentacion ? ` - ${material.presentacion}` : ""}`);
+      form2.setValue("descripcion", material.productName);
+      const masterType = (material.clase || "").toUpperCase();
+      const classification = masterType.includes("ROH") || masterType.includes("MP") ? "MP"
+        : masterType.includes("FERT") || masterType.includes("PT") ? "PT"
+        : masterType.includes("HALB") || masterType.includes("ST") ? "ST"
+        : masterType.includes("UNBW") ? "reactivos"
+        : masterType === "ME" ? "ME" : undefined;
+      if (classification) form2.setValue("clasificacion", classification as Step2Data["clasificacion"], { shouldValidate: true, shouldDirty: true });
     } else if (sap.descripcion) {
       form2.setValue("descripcion", sap.descripcion);
     }
     setShowSapModal(false);
+  };
+
+  const autoSelectMaterial = (value: string) => {
+    const query = value.trim().toLowerCase();
+    if (!query) return;
+    const material = invimaProducts.find((product) =>
+      (!product.empresa || product.empresa === empresaWatch) &&
+      product.controlado === form2.getValues("sustanciaControlada") &&
+      [product.productName, product.codigo || "", product.registryNumber].some((candidate) => candidate.trim().toLowerCase() === query)
+    );
+    if (material) void selectInvima(material);
   };
 
   const onStep1 = form1.handleSubmit((data) => {
@@ -529,17 +561,12 @@ export default function ActaCreatePage() {
   });
 
   const onClassification = () => {
-    const classification = form2.getValues("clasificacion");
     const controlled = form2.getValues("sustanciaControlada");
-    if (!classification) {
-      toast.error("Seleccione una clasificación");
-      return;
-    }
     if (controlled !== true && controlled !== false) {
       toast.error("Seleccione si el material es controlado o no controlado");
       return;
     }
-    setFormData((prev) => ({ ...prev, clasificacion: classification, sustanciaControlada: controlled }));
+    setFormData((prev) => ({ ...prev, sustanciaControlada: controlled }));
     setCompletedSteps((prev) => [...new Set([...prev, 1])]);
     setCurrentStep(2);
   };
@@ -918,30 +945,19 @@ export default function ActaCreatePage() {
         </div>
       </Modal>
 
-      {/* Step 2: Classification */}
+      {/* Step 2: Control condition */}
       {currentStep === 1 && (
         <div className="bg-white rounded-xl border border-slate-200 p-6">
-          <h2 className="text-base font-semibold text-slate-800 mb-2">Paso 2 — Clasificación y Condición de control</h2>
-          <p className="text-sm text-slate-500 mb-5">Defina la condición de control y la clasificación del material antes de continuar.</p>
+          <h2 className="text-base font-semibold text-slate-800 mb-2">Paso 2 — Condición de control del acta de destrucción</h2>
+          <p className="text-sm text-slate-500 mb-5">Seleccione si el material es controlado o no controlado por el FNE u otras autoridades como MinJusticia o Policía Nacional.</p>
           <div className="space-y-5">
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-2">condición de control según FNE (Fondo Nacional de Estupefacientes) *</label>
+              <label className="block text-sm font-medium text-slate-700 mb-2">Condición de control *</label>
               <div className="grid grid-cols-2 gap-3">
                 {[true, false].map((controlled) => (
                   <label key={String(controlled)} className={`flex items-center justify-center gap-2 rounded-lg border px-4 py-3 text-sm font-semibold cursor-pointer transition-all ${form2.watch("sustanciaControlada") === controlled ? "border-blue-500 bg-blue-50 text-blue-700 ring-1 ring-blue-200" : "border-slate-300 bg-white text-slate-700 hover:border-blue-300"}`}>
                     <input type="radio" checked={form2.watch("sustanciaControlada") === controlled} onChange={() => form2.setValue("sustanciaControlada", controlled, { shouldValidate: true, shouldDirty: true })} className="h-4 w-4 accent-blue-600" />
                     {controlled ? "Controlada" : "No controlada"}
-                  </label>
-                ))}
-              </div>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-2">Clasificación del material *</label>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {MATERIAL_CLASSIFICATIONS.map((option) => (
-                  <label key={option.value} className={`flex items-start gap-3 rounded-lg border p-3 cursor-pointer transition-all ${form2.watch("clasificacion") === option.value ? "border-blue-500 bg-blue-50 text-blue-700 ring-1 ring-blue-200" : "border-slate-200 bg-white hover:border-blue-300"}`}>
-                    <input {...form2.register("clasificacion")} type="radio" value={option.value} className="mt-0.5 h-4 w-4 accent-blue-600 shrink-0" />
-                    <span><span className="block text-sm font-semibold">{option.label}</span><span className="mt-0.5 block text-xs text-slate-500">{option.detail}</span></span>
                   </label>
                 ))}
               </div>
@@ -962,7 +978,7 @@ export default function ActaCreatePage() {
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">Código INVIMA *</label>
               <div className="flex gap-2">
-                <input {...form2.register("registroINVIMA")} placeholder="Código INVIMA o N/A" className="min-w-0 flex-1 px-3 py-2.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                <input {...form2.register("registroINVIMA", { onBlur: (event) => autoSelectMaterial(event.target.value) })} placeholder="Código INVIMA o N/A" className="min-w-0 flex-1 px-3 py-2.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
                 <button type="button" onClick={() => setShowInvimaModal(true)} className="flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700 hover:border-blue-500 hover:text-blue-700" title="Buscar información en el maestro"><Search size={16} /> Buscar</button>
               </div>
               <FieldError message={form2.formState.errors.registroINVIMA?.message} />
@@ -971,7 +987,7 @@ export default function ActaCreatePage() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="sm:col-span-2">
                 <label className="block text-sm font-medium text-slate-700 mb-1">Descripción del material *</label>
-                <input {...form2.register("descripcion")} placeholder="Nombre, concentración y presentación" className="w-full px-3 py-2.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                <input {...form2.register("descripcion", { onBlur: (event) => autoSelectMaterial(event.target.value) })} placeholder="Nombre, concentración y presentación" className="w-full px-3 py-2.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
                 <FieldError message={form2.formState.errors.descripcion?.message} />
               </div>
               <div className="order-first">
@@ -979,19 +995,20 @@ export default function ActaCreatePage() {
                 <input type="hidden" {...form2.register("invimaProductId")} />
                 <input type="hidden" {...form2.register("sapCodeId")} />
                 <div className="flex gap-2">
-                  <input {...form2.register("codigoSAP")} placeholder="Ingrese únicamente el código SAP" className="min-w-0 flex-1 px-3 py-2.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  <input {...form2.register("codigoSAP", { onBlur: (event) => autoSelectMaterial(event.target.value) })} placeholder="Ingrese únicamente el código SAP" className="min-w-0 flex-1 px-3 py-2.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
                   <button type="button" onClick={async () => { const codes = await api.getSapCodes(`empresaCode=${encodeURIComponent(empresaWatch === "Humax" ? "CO11" : empresaWatch === "Farmatech" ? "CO12" : "CO13")}`); setSapCodes(Array.isArray(codes) ? codes as SapCode[] : []); setShowSapModal(true); }} className="flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700 hover:border-blue-500 hover:text-blue-700" title="Buscar cualquier código SAP"><Search size={16} /> Buscar</button>
                 </div>
                 <FieldError message={form2.formState.errors.codigoSAP?.message} />
               </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Estado interno INVIMA *</label>
-                <input type="hidden" {...form2.register("estadoInvima")} />
-                <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm font-semibold text-slate-700">
-                  <span className="h-2 w-2 rounded-full bg-emerald-500" />
-                  {form2.watch("estadoInvima") || "N/A"}
-                  <span className="ml-auto text-xs font-normal text-slate-500">Desde el maestro</span>
-                </div>
+              <div className="order-first">
+                <label className="block text-sm font-medium text-slate-700 mb-1">Tipo de material</label>
+                <input
+                  value={selectedMasterMaterial?.clase || "Sin tipo asociado"}
+                  readOnly
+                  aria-label="Tipo de material asociado al código SAP"
+                  className="w-full px-3 py-2.5 text-sm border border-slate-200 bg-slate-50 text-slate-700 rounded-lg cursor-default"
+                />
+                <p className="mt-1 text-xs text-slate-500">Se completa automáticamente al seleccionar un código SAP del maestro.</p>
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Número de Lote *</label>
@@ -1011,6 +1028,21 @@ export default function ActaCreatePage() {
                 />
                 <FieldError message={form2.formState.errors.fechaVencimiento?.message} />
               </div>
+            </div>
+            <div>
+              <div className="mb-2 flex items-center justify-between gap-3">
+                <label className="block text-sm font-medium text-slate-700">Clasificación del material *</label>
+                <span className="text-xs text-slate-500">{classificationLocked ? "Asignada automáticamente desde el maestro." : "Seleccione manualmente si el maestro no la define."}</span>
+              </div>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                {MATERIAL_CLASSIFICATIONS.map((option) => (
+                  <label key={option.value} className={`flex items-start gap-3 rounded-lg border p-3 transition-all ${classificationLocked ? "cursor-not-allowed opacity-70" : "cursor-pointer"} ${form2.watch("clasificacion") === option.value ? "border-blue-500 bg-blue-50 text-blue-700 ring-1 ring-blue-200" : "border-slate-200 bg-white hover:border-blue-300"}`}>
+                    <input {...form2.register("clasificacion")} type="radio" value={option.value} disabled={classificationLocked} className="mt-0.5 h-4 w-4 shrink-0 accent-blue-600 disabled:cursor-not-allowed" />
+                    <span><span className="block text-sm font-semibold">{option.label}</span><span className="mt-0.5 block text-xs text-slate-500">{option.detail}</span></span>
+                  </label>
+                ))}
+              </div>
+              <FieldError message={form2.formState.errors.clasificacion?.message} />
             </div>
             <div className="flex justify-between pt-2">
               <button type="button" onClick={() => setCurrentStep(1)} className="h-11 min-w-[140px] px-4 py-2.5 text-sm text-slate-700 font-medium bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors">← Anterior</button>
@@ -1197,7 +1229,6 @@ export default function ActaCreatePage() {
               <Row label="Orden de Producción" value={String(formData.ordenProduccion || "")} />
               <Row label="Fecha Vencimiento" value={String(formData.fechaVencimiento || "")} />
               <Row label="Registro INVIMA" value={String(formData.registroINVIMA || "")} />
-              <Row label="Estado interno INVIMA" value={String(formData.estadoInvima || "N/A")} />
               <Row label="Sustancia Controlada" value={formData.sustanciaControlada ? "Sí" : "No"} />
             </Section>
             <Section title="Información Económica">

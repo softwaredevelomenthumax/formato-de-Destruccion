@@ -134,27 +134,44 @@ async function seed() {
     }
 
     const testProducts = [
-      ['INV-TEST-001', 'Acetaminofén 500 mg', 'Humax', 'CO11', 'Analgésico', 0, 'Tabletas x 100', 1],
-      ['INV-TEST-002', 'Amoxicilina 500 mg', 'Humax', 'CO11', 'Antibiótico', 0, 'Cápsulas x 20', 1],
-      ['INV-TEST-003', 'Solución salina 0.9%', 'Farmatech', 'CO12', 'Solución parenteral', 0, 'Bolsa x 500 mL', 1],
-      ['INV-TEST-004', 'Morfina 10 mg/mL', 'Farmatech', 'CO12', 'Controlado', 1, 'Ampolla x 1 mL', 1],
-      ['INV-TEST-005', 'Loratadina 10 mg', 'Cambridge', 'CO13', 'Antihistamínico', 0, 'Tabletas x 30', 1],
-      ['INV-TEST-006', 'Omeprazol 20 mg', 'Cambridge', 'CO13', 'Antiulceroso', 0, 'Cápsulas x 28', 1],
+      ['ROH', 0, '001', 'Lactosa monohidrato', 'MP'], ['ROH', 0, '002', 'Celulosa microcristalina', 'MP'],
+      ['ROH', 1, '003', 'Codeína fosfato', 'MP'], ['ROH', 1, '004', 'Fenobarbital', 'MP'],
+      ['FERT', 0, '005', 'Tabletas de vitamina C 500 mg', 'PT'], ['FERT', 0, '006', 'Jarabe multivitamínico 120 mL', 'PT'],
+      ['FERT', 1, '007', 'Tabletas de clonazepam 2 mg', 'PT'], ['FERT', 1, '008', 'Solución oral de tramadol 100 mg', 'PT'],
+      ['HALB', 0, '009', 'Granulado de acetaminofén', 'ST'], ['HALB', 0, '010', 'Mezcla para cápsulas de omeprazol', 'ST'],
+      ['HALB', 1, '011', 'Granulado de codeína', 'ST'], ['HALB', 1, '012', 'Mezcla de morfina para ampollas', 'ST'],
+      ['ME', 0, '013', 'Frasco PET ámbar 120 mL', 'ME'], ['ME', 0, '014', 'Etiqueta autoadhesiva estándar', 'ME'],
+      ['ME', 1, '015', 'Etiqueta de seguridad para controlados', 'ME'], ['ME', 1, '016', 'Blíster de seguridad para controlados', 'ME'],
+      ['UNBW', 0, '017', 'Reactivo de pH 7.00', 'UNBW'], ['UNBW', 0, '018', 'Material de referencia de cafeína', 'UNBW'],
+      ['UNBW', 1, '019', 'Estándar de referencia de morfina', 'UNBW'], ['UNBW', 1, '020', 'Estándar de referencia de codeína', 'UNBW'],
     ];
 
     console.log(`\n💊 Cargando ${testProducts.length} productos INVIMA de prueba...`);
-    for (const [registryNumber, productName, empresa, empresaCode, tipoMedicamento, controlado, presentacion, requiereSap] of testProducts) {
-      const id = `inv-test-${registryNumber.slice(-3)}`;
-      await pool.request().input('id', id).input('registryNumber', registryNumber).input('productName', productName)
-        .input('empresa', empresa).input('empresaCode', empresaCode).input('tipoMedicamento', tipoMedicamento)
-        .input('controlado', controlado).input('presentacion', presentacion).input('requiereSap', requiereSap)
-        .query(`IF NOT EXISTS (SELECT 1 FROM invima_products WHERE registryNumber = @registryNumber)
-          INSERT INTO invima_products (id, productName, registryNumber, internalStatus, holder, tipoMedicamento, controlado, presentacion, empresaCode, empresa, requiereSap, requiereInvima)
-          VALUES (@id, @productName, @registryNumber, 'Vigente', @empresa, @tipoMedicamento, @controlado, @presentacion, @empresaCode, @empresa, @requiereSap, 1)`);
-      await pool.request().input('id', `sap-test-${registryNumber.slice(-3)}`).input('codigo', `SAP-${registryNumber.slice(-3)}`)
+    for (const [materialCode, controlado, sequence, productName, clase] of testProducts) {
+      const id = `inv-test-${sequence}`;
+      const registryNumber = `INV-PRUEBA-${sequence}`;
+      const sapCode = `SAP-PRUEBA-${sequence}`;
+      const empresa = 'Humax';
+      const empresaCode = 'CO11';
+      await pool.request().input('id', id).input('codigoMaterial', `${materialCode}-${sequence}`).input('codigo', sapCode)
+        .input('clase', clase).input('registryNumber', registryNumber).input('productName', productName)
+        .input('empresa', empresa).input('empresaCode', empresaCode).input('tipoMedicamento', clase)
+        .input('controlado', controlado).input('presentacion', productName).input('requiereSap', 1)
+        .query(`IF EXISTS (SELECT 1 FROM invima_products WHERE id = @id OR registryNumber = @registryNumber)
+          UPDATE invima_products SET codigoMaterial = @codigoMaterial, codigo = @codigo, clase = @clase, productName = @productName,
+            registryNumber = @registryNumber, tipoMedicamento = @tipoMedicamento, controlado = @controlado, presentacion = @presentacion,
+            empresaCode = @empresaCode, empresa = @empresa WHERE id = @id OR registryNumber = @registryNumber
+          ELSE
+          INSERT INTO invima_products (id, codigoMaterial, codigo, clase, productName, registryNumber, internalStatus, holder, tipoMedicamento, controlado, presentacion, empresaCode, empresa, requiereSap, requiereInvima)
+          VALUES (@id, @codigoMaterial, @codigo, @clase, @productName, @registryNumber, '', @empresa, @tipoMedicamento, @controlado, @presentacion, @empresaCode, @empresa, @requiereSap, 1)`);
+      await pool.request().input('id', `sap-test-${sequence}`).input('codigo', sapCode)
         .input('descripcion', productName).input('empresaCode', empresaCode).input('empresa', empresa)
-        .input('invimaProductId', id).input('presentacion', presentacion).input('unidadMedida', 'UND')
-        .query(`IF NOT EXISTS (SELECT 1 FROM sap_codes WHERE codigo = @codigo AND empresaCode = @empresaCode)
+        .input('invimaProductId', id).input('presentacion', productName).input('unidadMedida', 'UND')
+        .query(`IF EXISTS (SELECT 1 FROM sap_codes WHERE id = @id OR (codigo = @codigo AND empresaCode = @empresaCode))
+          UPDATE sap_codes SET codigo = @codigo, descripcion = @descripcion, empresaCode = @empresaCode, empresa = @empresa,
+            invimaProductId = @invimaProductId, presentacion = @presentacion, unidadMedida = @unidadMedida
+            WHERE id = @id OR (codigo = @codigo AND empresaCode = @empresaCode)
+          ELSE
           INSERT INTO sap_codes (id, codigo, descripcion, empresaCode, empresa, invimaProductId, presentacion, unidadMedida, status)
           VALUES (@id, @codigo, @descripcion, @empresaCode, @empresa, @invimaProductId, @presentacion, @unidadMedida, 'Activo')`);
     }

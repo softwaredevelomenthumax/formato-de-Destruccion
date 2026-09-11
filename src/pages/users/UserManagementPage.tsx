@@ -1,6 +1,7 @@
 import { useState } from "react";
-import { Users, Search, UserPlus, CheckCircle, XCircle, Edit2, Trash2, ToggleLeft, ToggleRight, Key } from "lucide-react";
+import { Users, Search, UserPlus, CheckCircle, XCircle, Edit2, Trash2, ToggleLeft, ToggleRight, Key, Mail } from "lucide-react";
 import { useApp } from "../../context/AppContext";
+import { api } from "../../services/api";
 import { Modal, ConfirmModal } from "../../components/ui/Modal";
 import { Badge } from "../../components/ui/Badge";
 import { EmptyState } from "../../components/ui/EmptyState";
@@ -36,13 +37,13 @@ export default function UserManagementPage() {
 
   const pendingSolicitudes = solicitudes.filter((s) => s.status === "pendiente");
 
-  const handleSaveUser = () => {
+  const handleSaveUser = async () => {
     if (!form.nombre || !form.username || !form.area) { toast.error("Complete todos los campos obligatorios"); return; }
     if (editUser) {
-      updateUser(editUser.id, { nombre: form.nombre, area: form.area, rol: form.rol, email: form.email || undefined, status: form.status });
+      await updateUser(editUser.id, { nombre: form.nombre, area: form.area, rol: form.rol, email: form.email, status: form.status });
       toast.success("Usuario actualizado");
     } else {
-      createUser({ username: form.username, password: form.password, nombre: form.nombre, area: form.area, rol: form.rol, email: form.email || undefined, status: form.status });
+      await createUser({ username: form.username, password: form.password, nombre: form.nombre, area: form.area, rol: form.rol, email: form.email || undefined, status: form.status });
       toast.success("Usuario creado. Contraseña: " + form.password);
     }
     setEditUser(null);
@@ -67,6 +68,16 @@ export default function UserManagementPage() {
     setEditUser(null);
     setForm({ nombre: "", username: "", password: "Humax2024*", area: "", rol: "solicitante", email: "", status: "activo" });
     setCreateModalOpen(true);
+  };
+
+  const handleTestEmail = async (user: User) => {
+    const toastId = toast.loading(`Enviando correo de prueba a ${user.email}...`);
+    try {
+      await api.testUserEmail(user.id);
+      toast.success(`Correo de prueba enviado a ${user.email}`, { id: toastId });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "No se pudo enviar el correo de prueba", { id: toastId });
+    }
   };
 
   return (
@@ -161,6 +172,12 @@ export default function UserManagementPage() {
                         </td>
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-1 justify-end">
+                            {u.status === "activo" && u.email && (
+                              <button onClick={() => handleTestEmail(u)}
+                                className="p-1.5 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded transition-colors" title={`Enviar correo de prueba a ${u.email}`}>
+                                <Mail size={15} />
+                              </button>
+                            )}
                             <button onClick={() => { updateUser(u.id, { status: u.status === "activo" ? "inactivo" : "activo" }); toast.success(`Usuario ${u.status === "activo" ? "desactivado" : "activado"}`); }}
                               className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors" title={u.status === "activo" ? "Desactivar" : "Activar"}>
                               {u.status === "activo" ? <ToggleRight size={16} /> : <ToggleLeft size={16} />}

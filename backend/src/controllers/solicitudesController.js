@@ -1,5 +1,6 @@
 import { getPool } from '../database/connection.js';
 import bcryptjs from 'bcryptjs';
+import { sendWelcomeEmail } from '../services/emailService.js';
 
 // Crear solicitud
 export async function createSolicitud(req, res) {
@@ -22,6 +23,10 @@ export async function createSolicitud(req, res) {
         INSERT INTO solicitudes (id, username, password, nombre, email, area, rolSolicitado)
         VALUES (@id, @username, @password, @nombre, @email, @area, @rolSolicitado)
       `);
+
+    if (email) {
+      void sendWelcomeEmail({ to: email, recipientName: nombre });
+    }
 
     res.status(201).json({ id, username, nombre, email, area, rolSolicitado, status: 'pendiente' });
   } catch (error) {

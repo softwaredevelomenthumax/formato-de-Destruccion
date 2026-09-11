@@ -27,6 +27,7 @@ export type ClasificacionMaterial =
   | "ME"
   | "MP"
   | "SQ"
+  | "ST"
   | "residuo_comun"
   | "residuo_aprovechable"
   | "materia_prima"
@@ -76,6 +77,7 @@ export interface Ceco {
 
 export interface InvimaProduct {
   id: string;
+  codigoMaterial?: string;
   fabricante?: string;
   clase?: string;
   estatusSap?: "Activo" | "Inactivo";

@@ -27,6 +27,16 @@ function normalizeUser(value: Partial<User> | null): User | null {
   return { ...value, rol: role } as User;
 }
 
+function getStoredSessionUser(): User | null {
+  try {
+    const stored = sessionStorage.getItem("add_current_user");
+    return stored ? normalizeUser(JSON.parse(stored)) : null;
+  } catch {
+    sessionStorage.removeItem("add_current_user");
+    return null;
+  }
+}
+
 interface AuthContextType {
   user: User | null;
   users: User[];
@@ -41,40 +51,17 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null>(() => {
-    try {
-      const stored = localStorage.getItem("add_current_user");
-      if (!stored) return null;
-
-      const parsed = normalizeUser(JSON.parse(stored) as Partial<User> | null);
-      if (!parsed) {
-        localStorage.removeItem("add_current_user");
-        return null;
-      }
-
-      return parsed;
-    } catch {
-      localStorage.removeItem("add_current_user");
-      return null;
-    }
-  });
+  // La sesión se mantiene únicamente mientras la aplicación está abierta.
+  // Al recargar o volver a abrir, siempre se solicita iniciar sesión.
+  const [user, setUser] = useState<User | null>(getStoredSessionUser);
 
   const [users, setUsers] = useState<User[]>([]);
-  const [token, setTokenState] = useState<string | null>(() => {
-    try {
-      return localStorage.getItem("add_token");
-    } catch {
-      return null;
-    }
-  });
+  const [token, setTokenState] = useState<string | null>(() => sessionStorage.getItem("add_token"));
 
   const setToken = useCallback((newToken: string | null) => {
-    if (newToken) {
-      localStorage.setItem("add_token", newToken);
-    } else {
-      localStorage.removeItem("add_token");
-    }
     setTokenState(newToken);
+    if (newToken) sessionStorage.setItem("add_token", newToken);
+    else sessionStorage.removeItem("add_token");
   }, []);
 
   const updateCurrentUser = useCallback((changes: Partial<User>) => {
@@ -82,7 +69,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (!current) return current;
 
       const updatedUser = { ...current, ...changes };
-      localStorage.setItem("add_current_user", JSON.stringify(updatedUser));
+      sessionStorage.setItem("add_current_user", JSON.stringify(updatedUser));
       return updatedUser;
     });
   }, []);
@@ -90,14 +77,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!token) {
       setUser(null);
-      localStorage.removeItem("add_current_user");
+      sessionStorage.removeItem("add_current_user");
       return;
     }
 
     if (user) {
-      localStorage.setItem("add_current_user", JSON.stringify(user));
+      sessionStorage.setItem("add_current_user", JSON.stringify(user));
     } else {
-      localStorage.removeItem("add_current_user");
+      sessionStorage.removeItem("add_current_user");
     }
   }, [user, token]);
 
@@ -124,8 +111,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return { success: false, message: response.error };
       }
 
-      localStorage.removeItem("add_current_user");
-      localStorage.removeItem("add_token");
+      sessionStorage.removeItem("add_current_user");
+      sessionStorage.removeItem("add_token");
       localStorage.removeItem("add-sidebar-collapsed");
       setToken(response.token);
       setUser(normalizeUser(response.user) ?? null);
@@ -136,8 +123,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const logout = () => {
-    localStorage.removeItem("add_current_user");
-    localStorage.removeItem("add_token");
+    sessionStorage.removeItem("add_current_user");
+    sessionStorage.removeItem("add_token");
     localStorage.removeItem("add-sidebar-collapsed");
     localStorage.removeItem("add_remember_me");
     localStorage.removeItem("add_remember_username");

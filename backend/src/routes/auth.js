@@ -2,6 +2,7 @@ import express from 'express';
 import { getPool } from '../database/connection.js';
 import jwt from 'jsonwebtoken';
 import bcryptjs from 'bcryptjs';
+import { sendWelcomeEmail } from '../services/emailService.js';
 
 const router = express.Router();
 
@@ -75,6 +76,10 @@ router.post('/register', async (req, res) => {
         INSERT INTO solicitudes (id, username, password, nombre, email, area, rolSolicitado)
         VALUES (@id, @username, @password, @nombre, @email, @area, @rolSolicitado)
       `);
+
+    if (email) {
+      void sendWelcomeEmail({ to: email, recipientName: nombre });
+    }
 
     res.status(201).json({ message: 'Solicitud registrada. Pendiente de aprobación.' });
   } catch (error) {

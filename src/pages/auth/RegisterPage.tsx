@@ -83,8 +83,8 @@ export default function RegisterPage() {
           </div>
           <h2 className="text-xl font-bold text-slate-900">Solicitud enviada</h2>
           <p className="text-slate-600 mt-2 text-sm">
-            Su solicitud de acceso ha sido registrada y está pendiente de aprobación por el administrador del sistema.
-            Recibirá una notificación cuando sea procesada.
+            Su registro fue recibido correctamente. Espere la autorización de la administración del sistema para poder ingresar.
+            Si registró un correo, también recibirá allí el mensaje de bienvenida.
           </p>
           <button
             onClick={() => navigate("/login")}

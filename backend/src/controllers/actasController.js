@@ -1,4 +1,43 @@
 import { getPool } from '../database/connection.js';
+import { sendNotificationEmail } from '../services/emailService.js';
+
+async function createAndSendNotification(pool, recipient, { title, message, type = 'info', actaId, actaReference }) {
+  // La columna notifications.id admite hasta 50 caracteres. Los UUID de
+  // usuarios ocupan 36, por lo que no deben formar parte del identificador.
+  const id = `n${Date.now()}-${Math.random().toString(36).slice(2, 12)}`;
+  await pool.request()
+    .input('id', id)
+    .input('userId', recipient.id)
+    .input('titulo', title)
+    .input('mensaje', message)
+    .input('tipo', type)
+    .input('actaId', actaId)
+    .query(`INSERT INTO notifications (id, userId, titulo, mensaje, tipo, actaId)
+      VALUES (@id, @userId, @titulo, @mensaje, @tipo, @actaId)`);
+
+  await sendNotificationEmail({
+    to: recipient.email,
+    recipientName: recipient.nombre,
+    title,
+    message,
+    actaId: actaReference || actaId,
+  });
+}
+
+async function notifyRole(pool, role, notification) {
+  const result = await pool.request()
+    .input('role', role)
+    .query("SELECT id, nombre, email FROM users WHERE rol = @role AND status = 'activo'");
+
+  await Promise.all(result.recordset.map((recipient) => createAndSendNotification(pool, recipient, notification)));
+}
+
+async function getActiveUser(pool, userId) {
+  const result = await pool.request()
+    .input('userId', userId)
+    .query("SELECT id, nombre, email FROM users WHERE id = @userId AND status = 'activo'");
+  return result.recordset[0];
+}
 
 async function getNextConsecutivo(pool) {
   const year = new Date().getFullYear();
@@ -221,12 +260,68 @@ export async function deleteActa(req, res) {
   }
 }
 
+// Enviar a aprobaciÃ³n desde el servidor para que el aviso no dependa de que
+// el navegador del solicitante permanezca abierto.
+export async function submitActa(req, res) {
+  try {
+    const { id } = req.params;
+    const { requiereCostos } = req.body;
+    const pool = getPool();
+    const actaResult = await pool.request().input('id', id)
+      .query('SELECT id, consecutivo, solicitanteId, status FROM actas WHERE id = @id');
+    const acta = actaResult.recordset[0];
+    if (!acta) return res.status(404).json({ error: 'Acta no encontrada' });
+    if (['pendiente_aprobacion_area', 'pendiente_costos', 'pendiente_hse', 'aprobada'].includes(acta.status)) {
+      return res.status(409).json({ error: 'El acta ya se encuentra en el flujo de aprobaciÃ³n' });
+    }
+
+    await pool.request()
+      .input('id', id)
+      .input('requiereCostos', Boolean(requiereCostos))
+      .query("UPDATE actas SET status = 'pendiente_aprobacion_area', requiereCostos = @requiereCostos, updatedAt = GETDATE() WHERE id = @id");
+
+    await pool.request()
+      .input('actaId', id)
+      .input('requiereCostos', Boolean(requiereCostos))
+      .query(`UPDATE acta_aprobaciones
+        SET status = CASE WHEN paso = 'costos' AND @requiereCostos = 0 THEN 'no_aplica' ELSE 'pendiente' END,
+          aprobador = NULL, comentario = NULL, motivo = NULL, ajustes = NULL
+        WHERE actaId = @actaId`);
+
+    await notifyRole(pool, 'aprobador_area', {
+      title: 'Nueva acta pendiente de aprobaciÃ³n',
+      message: `El acta ${acta.consecutivo} requiere su aprobaciÃ³n de Ã¡rea.`,
+      type: 'info',
+      actaId: id,
+      actaReference: acta.consecutivo,
+    });
+
+    const requester = await getActiveUser(pool, acta.solicitanteId);
+    if (requester) {
+      await createAndSendNotification(pool, requester, {
+        title: 'Acta enviada a aprobaciÃ³n',
+        message: `El acta ${acta.consecutivo} fue enviada correctamente y estÃ¡ pendiente de revisiÃ³n del aprobador de Ã¡rea.`,
+        type: 'success', actaId: id, actaReference: acta.consecutivo,
+      });
+    }
+    res.json({ message: 'Acta enviada a aprobaciÃ³n' });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+}
+
 // Aprobar acta
 export async function approveActa(req, res) {
   try {
     const { id } = req.params;
     const { paso, aprobador, comentario } = req.body;
     const pool = getPool();
+
+    const actaResult = await pool.request()
+      .input('id', id)
+      .query('SELECT consecutivo, solicitanteId, requiereCostos FROM actas WHERE id = @id');
+    const acta = actaResult.recordset[0];
+    if (!acta) return res.status(404).json({ error: 'Acta no encontrada' });
 
     const aprobId = `ap${Date.now()}`;
     await pool.request()
@@ -242,7 +337,7 @@ export async function approveActa(req, res) {
       `);
 
     const nextStatus = paso === 'area'
-      ? (await pool.request().input('id', id).query('SELECT requiereCostos FROM actas WHERE id = @id')).recordset[0]?.requiereCostos
+      ? acta.requiereCostos
         ? 'pendiente_costos'
         : 'pendiente_hse'
       : paso === 'costos' ? 'pendiente_hse' : 'aprobada';
@@ -251,6 +346,36 @@ export async function approveActa(req, res) {
       .input('id', id)
       .input('status', nextStatus)
       .query('UPDATE actas SET status = @status, updatedAt = GETDATE() WHERE id = @id');
+
+    const nextRole = nextStatus === 'pendiente_costos' ? 'costos'
+      : nextStatus === 'pendiente_hse' ? 'hse' : null;
+    const nextRoleLabel = nextRole === 'costos' ? 'Costos' : 'HSE & S';
+
+    // El servidor genera el aviso. Así, si Costos aprueba, HSE recibe el
+    // correo aunque quien aprobó cierre el navegador inmediatamente.
+    if (nextRole) {
+      await notifyRole(pool, nextRole, {
+        title: 'Acta pendiente de tu aprobación',
+        message: `El acta ${acta.consecutivo} está pendiente de tu aprobación en ${nextRoleLabel}. Ingresa al sistema para revisarla.`,
+        type: 'info',
+        actaId: id,
+        actaReference: acta.consecutivo,
+      });
+    }
+
+    const requester = await getActiveUser(pool, acta.solicitanteId);
+    if (requester) {
+      const statusMessage = nextRole
+        ? `fue aprobada en ${paso === 'area' ? 'Aprobación de Área' : 'Costos'} y ahora está pendiente de revisión por ${nextRoleLabel}.`
+        : 'fue aprobada completamente.';
+      await createAndSendNotification(pool, requester, {
+        title: 'Actualización de tu acta',
+        message: `El acta ${acta.consecutivo} ${statusMessage}`,
+        type: nextRole ? 'info' : 'success',
+        actaId: id,
+        actaReference: acta.consecutivo,
+      });
+    }
 
     res.json({ message: 'Acta aprobada' });
   } catch (error) {
@@ -264,6 +389,11 @@ export async function rejectActa(req, res) {
     const { id } = req.params;
     const { paso, aprobador, motivo } = req.body;
     const pool = getPool();
+
+    const actaResult = await pool.request().input('id', id)
+      .query('SELECT consecutivo, solicitanteId FROM actas WHERE id = @id');
+    const acta = actaResult.recordset[0];
+    if (!acta) return res.status(404).json({ error: 'Acta no encontrada' });
 
     await pool.request()
       .input('actaId', id)
@@ -281,6 +411,37 @@ export async function rejectActa(req, res) {
       .query("UPDATE actas SET status = 'rechazada', updatedAt = GETDATE() WHERE id = @id");
 
     res.json({ message: 'Acta rechazada' });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+}
+
+export async function returnActa(req, res) {
+  try {
+    const { id } = req.params;
+    const { paso, aprobador, ajustes } = req.body;
+    const pool = getPool();
+    const actaResult = await pool.request().input('id', id)
+      .query('SELECT consecutivo, solicitanteId FROM actas WHERE id = @id');
+    const acta = actaResult.recordset[0];
+    if (!acta) return res.status(404).json({ error: 'Acta no encontrada' });
+
+    await pool.request()
+      .input('actaId', id).input('paso', paso).input('aprobador', aprobador).input('ajustes', JSON.stringify(ajustes || []))
+      .query("UPDATE acta_aprobaciones SET status = 'devuelto', aprobador = @aprobador, ajustes = @ajustes WHERE actaId = @actaId AND paso = @paso");
+    await pool.request().input('id', id)
+      .query("UPDATE actas SET status = 'devuelta_ajustes', updatedAt = GETDATE() WHERE id = @id");
+
+    const details = (ajustes || []).map((item) => `${item.campo}: ${item.comentario || item.correccion || ''}`).join('; ');
+    const requester = await getActiveUser(pool, acta.solicitanteId);
+    if (requester) {
+      await createAndSendNotification(pool, requester, {
+        title: 'Acta devuelta para ajustes',
+        message: `Su acta ${acta.consecutivo} requiere correcciones.${details ? ` Detalle: ${details}` : ''}`,
+        type: 'warning', actaId: id, actaReference: acta.consecutivo,
+      });
+    }
+    res.json({ message: 'Acta devuelta para ajustes' });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }

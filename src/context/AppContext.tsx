@@ -156,8 +156,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const updateUser = async (id: string, updates: Partial<User>) => {
     try {
-      await api.updateUser(id, updates);
-      setUsers((current) => asArray<User>(current).map((u) => (u.id === id ? { ...u, ...updates } : u)));
+      const response = await api.updateUser(id, updates) as { user?: User };
+      const updatedUser = response?.user as User | undefined;
+      setUsers((current) => asArray<User>(current).map((u) => (u.id === id ? { ...u, ...updates, ...updatedUser } : u)));
     } catch (error) {
       console.error("Error actualizando usuario:", error);
       throw error;
@@ -249,6 +250,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (!acta) throw new Error("No se encontró el acta para enviarla a aprobación");
 
       const rc = requiresCostos(acta);
+      await api.submitActa(id, { requiereCostos: rc });
+      setActas((current) => asArray<Acta>(current).map((currentActa) =>
+        currentActa.id === id ? { ...currentActa, status: newStatus, requiereCostos: rc } : currentActa
+      ));
+      return;
       
       await updateActa(id, {
         status: newStatus,
@@ -311,44 +317,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         a.id === actaId ? { ...a, status: nextStatus, aprobaciones: updatedAprobaciones } : a
       ));
 
-      const approvalStepLabel = paso === "area" ? "Aprobación de Área" : paso === "costos" ? "Costos" : "HSE";
-      const nextStatusLabel = nextStatus === "pendiente_costos"
-        ? "pendiente de revisión por Costos"
-        : nextStatus === "pendiente_hse"
-          ? "pendiente de revisión por HSE"
-          : nextStatus === "aprobada"
-            ? "aprobada completamente"
-            : nextStatus;
-      const nextRole = nextStatus === "pendiente_costos"
-        ? "costos"
-        : nextStatus === "pendiente_hse"
-          ? "hse"
-          : null;
-      const involvedRoles = new Set(["aprobador_area"]);
-      if (acta.requiereCostos) involvedRoles.add("costos");
-      if (nextRole) involvedRoles.add(nextRole);
-      const involvedApprovers = users.filter((u) => involvedRoles.has(u.rol) && u.status === "activo");
-      const notifications = [
-        {
-          userId: acta.solicitanteId,
-          title: "Actualización de tu acta",
-          message: `El acta ${acta.consecutivo} fue aprobada en ${approvalStepLabel} y ahora está ${nextStatusLabel}.`,
-          type: nextStatus === "aprobada" ? "success" as const : "info" as const,
-          read: false,
-          actaId: acta.id,
-        },
-        ...involvedApprovers.map((approver) => ({
-          userId: approver.id,
-          title: nextRole && approver.rol === nextRole ? "Acta pendiente de aprobación" : "Actualización del flujo de aprobación",
-          message: nextRole && approver.rol === nextRole
-            ? `El acta ${acta.consecutivo} requiere su revisión en ${nextRole === "costos" ? "Costos" : "HSE"}.`
-            : `El acta ${acta.consecutivo} fue aprobada en ${approvalStepLabel} y ahora está ${nextStatusLabel}.`,
-          type: "info" as const,
-          read: false,
-          actaId: acta.id,
-        })),
-      ];
-      await Promise.all(notifications.map((notification) => addNotification(notification)));
+      // El backend crea y envía estas notificaciones para que el correo no
+      // dependa de que el navegador de quien aprobó siga abierto.
     } catch (error) {
       console.error("Error aprobando acta:", error);
       throw error;
@@ -374,7 +344,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       await addNotification({
         userId: acta.solicitanteId,
         title: "Acta rechazada",
-        message: `Su acta ${acta.consecutivo} fue rechazada.`,
+        message: `Su acta ${acta.consecutivo} fue rechazada. Motivo: ${motivo.trim()}`,
         type: "error",
         read: false,
         actaId: acta.id,
@@ -404,7 +374,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       await addNotification({
         userId: acta.solicitanteId,
         title: "Acta devuelta para ajustes",
-        message: `Su acta ${acta.consecutivo} requiere correcciones.`,
+        message: `Su acta ${acta.consecutivo} requiere correcciones.${ajustes?.length ? ` Detalle: ${ajustes.map((ajuste) => `${ajuste.campo}: ${ajuste.comentario || ajuste.correccion}`).join("; ")}` : ""}`,
         type: "warning",
         read: false,
         actaId: acta.id,

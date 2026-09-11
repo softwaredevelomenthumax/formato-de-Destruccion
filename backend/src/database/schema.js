@@ -179,6 +179,7 @@ export async function initializeDatabase() {
       IF COL_LENGTH('invima_products', 'codigo') IS NULL ALTER TABLE invima_products ADD codigo NVARCHAR(100);
       IF COL_LENGTH('invima_products', 'canal') IS NULL ALTER TABLE invima_products ADD canal NVARCHAR(100);
       IF COL_LENGTH('invima_products', 'estadoInvima') IS NULL ALTER TABLE invima_products ADD estadoInvima NVARCHAR(50);
+      IF COL_LENGTH('invima_products', 'codigoMaterial') IS NULL ALTER TABLE invima_products ADD codigoMaterial NVARCHAR(100);
       IF COL_LENGTH('actas', 'cecoId') IS NULL ALTER TABLE actas ADD cecoId NVARCHAR(50);
       IF COL_LENGTH('actas', 'invimaProductId') IS NULL ALTER TABLE actas ADD invimaProductId NVARCHAR(50);
       IF COL_LENGTH('actas', 'sapCodeId') IS NULL ALTER TABLE actas ADD sapCodeId NVARCHAR(50);

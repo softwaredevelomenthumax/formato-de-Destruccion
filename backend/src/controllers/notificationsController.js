@@ -1,4 +1,5 @@
 import { getPool } from '../database/connection.js';
+import { sendNotificationEmail } from '../services/emailService.js';
 
 // Crear notificación
 export async function createNotification(req, res) {
@@ -23,7 +24,21 @@ export async function createNotification(req, res) {
         VALUES (@id, @userId, @titulo, @mensaje, @tipo, @actaId)
       `);
 
-    res.status(201).json({ id, userId, title: notificationTitle, message: notificationMessage, type: notificationType, actaId, read: false });
+    // El correo se envía a cualquier usuario activo que haya registrado un
+    // correo corporativo, sin depender de su rol (HSE, Costos, Área, etc.).
+    const recipientResult = await pool.request()
+      .input('userId', userId)
+      .query("SELECT nombre, email FROM users WHERE id = @userId AND status = 'activo'");
+    const recipient = recipientResult.recordset[0];
+    const email = await sendNotificationEmail({
+      to: recipient?.email,
+      recipientName: recipient?.nombre,
+      title: notificationTitle,
+      message: notificationMessage,
+      actaId,
+    });
+
+    res.status(201).json({ id, userId, title: notificationTitle, message: notificationMessage, type: notificationType, actaId, read: false, email });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
