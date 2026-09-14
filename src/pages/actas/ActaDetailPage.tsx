@@ -173,6 +173,7 @@ export default function ActaDetailPage() {
             <Grid2>
               <Row label="Descripción" value={acta.descripcion} className="col-span-2" />
               <Row label="Código SAP" value={acta.codigoSAP} />
+              <Row label="Tipo de material" value={acta.tipoMaterial || "No especificado"} />
               <Row label="Registro INVIMA" value={acta.registroINVIMA} />
               <Row label="Número de Lote" value={acta.numeroLote} />
               <Row label="Orden de Producción" value={acta.ordenProduccion} />

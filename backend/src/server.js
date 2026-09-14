@@ -15,7 +15,7 @@ import cecosRoutes from './routes/cecos.js';
 import sapRoutes from './routes/sap.js';
 
 const app = express();
-const PORT = process.env.PORT || 3001;
+const PORT = process.env.PORT || 3004;
 
 const allowedOrigins = (process.env.CORS_ORIGIN || '')
   .split(',')

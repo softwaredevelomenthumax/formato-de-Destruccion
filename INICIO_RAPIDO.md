@@ -21,7 +21,7 @@ DB_USER=sa
 DB_PASSWORD=tu-contraseña
 DB_DATABASE=destruccion_gestion
 DB_PORT=1433
-PORT=3001
+PORT=3004
 CORS_ORIGIN=http://localhost:5173
 JWT_SECRET=tu-clave-secreta-cambiar-en-produccion
 ```
@@ -32,7 +32,7 @@ JWT_SECRET=tu-clave-secreta-cambiar-en-produccion
 pnpm run dev
 ```
 
-✅ Backend corriendo en: `http://localhost:3001`
+✅ Backend corriendo en: `http://localhost:3004`
 
 ---
 
@@ -46,7 +46,7 @@ cp .env.example .env
 
 El archivo `.env` debe tener:
 ```env
-VITE_API_URL=http://localhost:3001/api
+VITE_API_URL=http://localhost:3004/api
 ```
 
 ### Instalar y correr Frontend

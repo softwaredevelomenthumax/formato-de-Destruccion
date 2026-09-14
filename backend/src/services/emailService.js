@@ -58,6 +58,10 @@ export async function sendNotificationEmail({ to, recipientName, title, message,
   const safeTitle = escapeHtml(title);
   const safeMessage = escapeHtml(message).replace(/\n/g, '<br>');
   const actaReference = actaId ? `<p style="margin:16px 0 0;color:#475569"><strong>Referencia:</strong> ${escapeHtml(actaId)}</p>` : '';
+  const appUrl = 'http://10.255.6.4:8443/login';
+  const appName = 'Sistema ADD - Gestión de Actas de Destrucción';
+  const safeAppUrl = escapeHtml(appUrl);
+  const safeAppName = escapeHtml(appName);
 
   try {
     const activeTransporter = getTransporter();
@@ -65,13 +69,15 @@ export async function sendNotificationEmail({ to, recipientName, title, message,
       from: process.env.MAIL_FROM || process.env.SMTP_USER,
       to,
       subject: `[Gestión de Actas] ${title}`,
-      text: `${title}\n\n${message}${actaId ? `\n\nReferencia: ${actaId}` : ''}`,
+      text: `${title}\n\n${message}${actaId ? `\n\nReferencia: ${actaId}` : ''}\n\n${appName}: ${appUrl}`,
       html: `
         <div style="font-family:Arial,sans-serif;color:#1e293b;line-height:1.5;max-width:620px">
           <h2 style="color:#1d4ed8">${safeTitle}</h2>
           <p>Hola${recipientName ? ` ${escapeHtml(recipientName)}` : ''},</p>
           <p>${safeMessage}</p>
           ${actaReference}
+          <p style="margin:24px 0 8px"><a href="${safeAppUrl}" style="display:inline-block;background:#1d4ed8;color:#ffffff;text-decoration:none;padding:11px 18px;border-radius:6px;font-weight:bold">${safeAppName}</a></p>
+          <p style="margin:0;color:#64748b;font-size:13px">También puedes ingresar desde: <a href="${safeAppUrl}" style="color:#1d4ed8">${safeAppName}</a></p>
           <p style="margin-top:24px;color:#64748b;font-size:13px">Este es un mensaje automático del sistema de Gestión de Actas.</p>
         </div>`,
     });

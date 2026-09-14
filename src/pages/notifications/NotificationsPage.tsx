@@ -77,9 +77,9 @@ export default function NotificationsPage() {
         size="md"
         footer={
           <>
-            <button onClick={() => setSelectedNotification(null)} className="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-lg">Cerrar</button>
+            <button onClick={() => setSelectedNotification(null)} className="w-full px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-lg sm:w-auto">Cerrar</button>
             {selectedNotification?.actaId && (
-              <button onClick={() => { navigate(`/actas/${selectedNotification.actaId}`); setSelectedNotification(null); }} className="px-4 py-2 text-sm font-semibold text-white bg-blue-700 hover:bg-blue-800 rounded-lg">Ver acta</button>
+              <button onClick={() => { navigate(`/actas/${selectedNotification.actaId}`); setSelectedNotification(null); }} className="w-full px-4 py-2 text-sm font-semibold text-white bg-blue-700 hover:bg-blue-800 rounded-lg sm:w-auto">Ver acta</button>
             )}
           </>
         }
@@ -117,7 +117,7 @@ export default function NotificationsPage() {
               return (
                 <div
                   key={n.id}
-                  className={`flex items-start gap-4 px-5 py-4 cursor-pointer transition-colors ${!n.read ? "bg-blue-50/40" : "hover:bg-slate-50"}`}
+                  className={`flex items-start gap-3 px-4 py-4 cursor-pointer transition-colors sm:gap-4 sm:px-5 ${!n.read ? "bg-blue-50/40" : "hover:bg-slate-50"}`}
                   onClick={() => handleClick(n)}
                 >
                   <div className={`w-2.5 h-2.5 rounded-full shrink-0 mt-1.5 ${n.read ? "bg-slate-300" : styles.dot}`} />
@@ -128,7 +128,7 @@ export default function NotificationsPage() {
                       {n.createdAt ? formatDistanceToNow(new Date(n.createdAt), { addSuffix: true, locale: es }) : "Hace un momento"}
                     </p>
                   </div>
-                  <div className="flex shrink-0 items-center gap-1">
+                  <div className="flex shrink-0 items-center gap-1 pt-0.5">
                     {!n.read && <button onClick={(e) => { e.stopPropagation(); markNotificationRead(n.id); }} className="p-1 text-slate-400 hover:text-blue-600" title="Marcar como leído"><Eye size={14} /></button>}
                     <button onClick={(e) => { e.stopPropagation(); handleDelete(n.id); }} className="p-1 text-slate-400 hover:text-red-600" title="Eliminar notificación"><Trash2 size={14} /></button>
                   </div>

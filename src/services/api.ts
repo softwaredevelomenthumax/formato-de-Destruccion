@@ -2,8 +2,8 @@
 // VITE_API_URL permite definir una API remota al desplegar. En desarrollo,
 // usa el mismo equipo desde el cual se abre la interfaz.
 const defaultApiUrl = typeof window !== "undefined"
-	? `http://${window.location.hostname}:3003/api`
-	: "http://localhost:3003/api";
+	? `http://${window.location.hostname}:3004/api`
+	: "http://localhost:3004/api";
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_URL || defaultApiUrl).replace(/\/+$/, "");
 
 async function parseResponse(response) {
@@ -13,7 +13,7 @@ async function parseResponse(response) {
 		try {
 			data = JSON.parse(text);
 		} catch {
-			throw new Error(`La API respondió HTML en ${response.url}. Verifica que el backend esté iniciado en el puerto 3003.`);
+			throw new Error(`La API respondió HTML en ${response.url}. Verifica que el backend esté iniciado en el puerto 3004.`);
 		}
 	}
 	if (!response.ok) throw new Error(data.error || "Error en la solicitud");

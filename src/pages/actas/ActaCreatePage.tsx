@@ -41,6 +41,24 @@ const MATERIAL_CLASSIFICATIONS = [
   { value: "residuo_aprovechable", label: "Residuo aprovechable", detail: "Información manual" },
 ] as const;
 
+const MATERIAL_TYPE_OPTIONS = [
+  { value: "ROH", classification: "MP", label: "ROH = Materia prima", meaning: "Materia prima: insumos y sustancias que se utilizan para fabricar el producto." },
+  { value: "FERT", classification: "PT", label: "FERT = Producto terminado", meaning: "Producto terminado: producto listo para comercialización o entrega." },
+  { value: "HALB", classification: "ST", label: "HALB = Semiterminado", meaning: "Semiterminado: material que requiere una etapa adicional antes de convertirse en producto terminado." },
+  { value: "ME", classification: "ME", label: "ME = Material de empaque", meaning: "Material de empaque: envases, etiquetas, blísteres y otros materiales de acondicionamiento." },
+  { value: "UNBW", classification: "reactivos", label: "UNBW = Reactivo o material de laboratorio", meaning: "Reactivo o material de laboratorio: sustancias y materiales usados para análisis, control o referencia." },
+] as const;
+
+const INVIMA_CLASSIFICATIONS = new Set(["MP", "ME", "PT"]);
+
+const getMaterialClassification = (product: InvimaProduct) => {
+  const classification = (product.clase || "").trim().toUpperCase();
+  if (INVIMA_CLASSIFICATIONS.has(classification)) return classification;
+
+  const materialCode = (product.codigoMaterial || "").trim().toUpperCase();
+  return MATERIAL_TYPE_OPTIONS.find((option) => option.value === materialCode)?.classification || classification;
+};
+
 const CAUSAL_ICONS: Record<CausalDestruccion, ReactNode> = {
   material_vencido: <Calendar size={24} />,
   producto_no_conforme: <AlertTriangle size={24} />,
@@ -207,7 +225,7 @@ const step2Schema = z.object({
   estadoInvima: z.enum(["Vigente", "Vencido", "Cancelado", "N/A"] as const),
   invimaProductId: z.string().optional(),
   sapCodeId: z.string().optional(),
-  otraClasificacion: z.string().optional(),
+  tipoMaterial: z.string().optional(),
 });
 const numberField = (label: string, maxValue: number, integer = false) =>
   z.any().superRefine((value, ctx) => {
@@ -305,6 +323,7 @@ export default function ActaCreatePage() {
   const [sapCodes, setSapCodes] = useState<SapCode[]>([]);
   const [sapSearch, setSapSearch] = useState("");
   const [showSapModal, setShowSapModal] = useState(false);
+  const [showMaterialTypeModal, setShowMaterialTypeModal] = useState(false);
   const [cecos, setCecos] = useState<Ceco[]>([]);
   const [cecoSearch, setCecoSearch] = useState("");
   const [showCecoModal, setShowCecoModal] = useState(false);
@@ -363,7 +382,7 @@ export default function ActaCreatePage() {
       fechaVencimiento: editingActa.fechaVencimiento,
       registroINVIMA: editingActa.registroINVIMA,
       estadoInvima: editingActa.estadoInvima || "N/A",
-      otraClasificacion: undefined,
+      tipoMaterial: editingActa.tipoMaterial,
     });
     form3.reset({
       pesoKg: editingActa.pesoKg,
@@ -372,7 +391,7 @@ export default function ActaCreatePage() {
     });
     setFormData({
       ...editingActa,
-      otraClasificacion: undefined,
+      tipoMaterial: editingActa.tipoMaterial,
     });
     setSelectedEmpresa(editingActa.empresa);
     setSelectedCausal(editingActa.causal);
@@ -479,6 +498,7 @@ export default function ActaCreatePage() {
   };
 
   const filteredInvima = invimaProducts.filter((p) =>
+    INVIMA_CLASSIFICATIONS.has(getMaterialClassification(p)) &&
     (!p.empresa || p.empresa === empresaWatch) &&
     p.controlado === form2.watch("sustanciaControlada") &&
     [p.productName, p.registryNumber, p.codigo || ""].some((value) => value.toLowerCase().includes(invimaSearch.toLowerCase()))
@@ -487,6 +507,7 @@ export default function ActaCreatePage() {
   const selectInvima = async (product: InvimaProduct) => {
     form2.setValue("invimaProductId", product.id);
     form2.setValue("registroINVIMA", product.registryNumber);
+    form2.setValue("tipoMaterial", product.codigoMaterial || product.clase || "", { shouldDirty: true });
     if (product.codigo) form2.setValue("codigoSAP", product.codigo, { shouldValidate: true });
     form2.setValue("descripcion", product.productName);
     const masterType = (product.clase || "").toUpperCase();
@@ -516,8 +537,24 @@ export default function ActaCreatePage() {
   const selectedMasterMaterial = invimaProducts.find((product) =>
     product.id === form2.watch("invimaProductId") || product.codigo === form2.watch("codigoSAP")
   );
+  const invimaNotApplicable = form2.watch("registroINVIMA") === "N/A";
+  const sapNotApplicable = form2.watch("codigoSAP") === "N/A";
   const masterType = (selectedMasterMaterial?.clase || "").toUpperCase();
-  const classificationLocked = !!selectedMasterMaterial && (masterType.includes("ROH") || masterType === "MP" || masterType.includes("FERT") || masterType === "PT" || masterType.includes("HALB") || masterType === "ST" || masterType.includes("UNBW") || masterType === "ME");
+  const classificationLocked = !sapNotApplicable && !!selectedMasterMaterial && (masterType.includes("ROH") || masterType === "MP" || masterType.includes("FERT") || masterType === "PT" || masterType.includes("HALB") || masterType === "ST" || masterType.includes("UNBW") || masterType === "ME");
+  const selectedMaterialType = selectedMasterMaterial?.codigoMaterial || selectedMasterMaterial?.clase || "";
+
+  const setInvimaNotApplicable = () => {
+    form2.setValue("registroINVIMA", "N/A", { shouldValidate: true, shouldDirty: true });
+    form2.setValue("invimaProductId", undefined, { shouldDirty: true });
+    setInvimaSearch("N/A");
+  };
+
+  const setSapNotApplicable = () => {
+    form2.setValue("codigoSAP", "N/A", { shouldValidate: true, shouldDirty: true });
+    form2.setValue("sapCodeId", undefined, { shouldDirty: true });
+    form2.setValue("invimaProductId", undefined, { shouldDirty: true });
+    form2.setValue("descripcion", "", { shouldDirty: true });
+  };
 
   const selectSap = (sap: SapCode) => {
     form2.setValue("codigoSAP", sap.codigo, { shouldValidate: true });
@@ -526,6 +563,7 @@ export default function ActaCreatePage() {
     if (material) {
       form2.setValue("invimaProductId", material.id);
       form2.setValue("registroINVIMA", material.registryNumber || "N/A");
+      form2.setValue("tipoMaterial", material.codigoMaterial || material.clase || "", { shouldDirty: true });
       form2.setValue("descripcion", material.productName);
       const masterType = (material.clase || "").toUpperCase();
       const classification = masterType.includes("ROH") || masterType.includes("MP") ? "MP"
@@ -601,6 +639,7 @@ export default function ActaCreatePage() {
       if (editingActa) {
         await updateActa(editingActa.id, {
           descripcion: data.descripcion || "",
+          tipoMaterial: data.tipoMaterial || "",
           codigoSAP: data.codigoSAP || "",
           numeroLote: data.numeroLote || "",
           ordenProduccion: data.ordenProduccion || "",
@@ -636,6 +675,7 @@ export default function ActaCreatePage() {
       responsable: data.responsable || "",
       area: isAreaFixed ? user.area : (data.area || ""),
       descripcion: data.descripcion || "",
+      tipoMaterial: data.tipoMaterial || "",
       codigoSAP: data.codigoSAP || "",
       numeroLote: data.numeroLote || "",
       ordenProduccion: data.ordenProduccion || "",
@@ -669,6 +709,7 @@ export default function ActaCreatePage() {
       if (editingActa) {
         await updateActa(editingActa.id, {
           descripcion: data.descripcion || "",
+          tipoMaterial: data.tipoMaterial || "",
           codigoSAP: data.codigoSAP || "",
           numeroLote: data.numeroLote || "",
           ordenProduccion: data.ordenProduccion || "",
@@ -704,6 +745,7 @@ export default function ActaCreatePage() {
       responsable: data.responsable || "",
       area: isAreaFixed ? user.area : (data.area || ""),
       descripcion: data.descripcion || "",
+      tipoMaterial: data.tipoMaterial || "",
       codigoSAP: data.codigoSAP || "",
       numeroLote: data.numeroLote || "",
       ordenProduccion: data.ordenProduccion || "",
@@ -849,7 +891,7 @@ export default function ActaCreatePage() {
             <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
             <input autoFocus value={invimaSearch} onChange={(event) => setInvimaSearch(event.target.value)} placeholder="Buscar código INVIMA o descripción..." className="w-full pl-9 pr-3 py-2.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
           </div>
-          <div className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-xs text-blue-800">Busca aquí el código INVIMA para rellenar automáticamente la información del material. Si no está en el sistema, completa la información manualmente.</div>
+          <div className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-xs text-blue-800">Busca aquí el código INVIMA para rellenar automáticamente la información del material. El maestro solo muestra materias primas, materiales de empaque y productos terminados.</div>
           <p className="text-xs text-slate-500">{filteredInvima.length} materiales encontrados por código INVIMA o descripción.</p>
           <div className="max-h-[50vh] overflow-auto border border-slate-200 rounded-lg">
             <table className="min-w-[680px] w-full text-sm">
@@ -945,6 +987,28 @@ export default function ActaCreatePage() {
         </div>
       </Modal>
 
+      <Modal open={showMaterialTypeModal} onClose={() => setShowMaterialTypeModal(false)} title="Tipos de material SAP" size="md">
+        <div className="space-y-3">
+          <p className="text-sm text-slate-600">Estos códigos identifican la naturaleza del material. Seleccione el que corresponda cuando el código SAP sea “No aplica”.</p>
+          <div className="divide-y divide-slate-100 rounded-lg border border-slate-200">
+            {MATERIAL_TYPE_OPTIONS.map((option) => (
+              <button
+                key={option.value}
+                type="button"
+                onClick={() => {
+                  if (sapNotApplicable) form2.setValue("tipoMaterial", option.value, { shouldDirty: true });
+                  setShowMaterialTypeModal(false);
+                }}
+                className="block w-full px-4 py-3 text-left hover:bg-blue-50 transition-colors"
+              >
+                <span className="block text-sm font-semibold text-slate-800">{option.label}</span>
+                <span className="mt-1 block text-xs leading-relaxed text-slate-500">{option.meaning}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      </Modal>
+
       {/* Step 2: Control condition */}
       {currentStep === 1 && (
         <div className="bg-white rounded-xl border border-slate-200 p-6">
@@ -977,9 +1041,12 @@ export default function ActaCreatePage() {
           <form onSubmit={onStep2} noValidate className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">Código INVIMA *</label>
-              <div className="flex gap-2">
+              <div className="flex flex-col gap-2 sm:flex-row">
                 <input {...form2.register("registroINVIMA", { onBlur: (event) => autoSelectMaterial(event.target.value) })} placeholder="Código INVIMA o N/A" className="min-w-0 flex-1 px-3 py-2.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                <button type="button" onClick={() => setShowInvimaModal(true)} className="flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700 hover:border-blue-500 hover:text-blue-700" title="Buscar información en el maestro"><Search size={16} /> Buscar</button>
+                <div className="flex gap-2">
+                  <button type="button" onClick={() => setShowInvimaModal(true)} className="flex flex-1 items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm font-medium text-slate-700 hover:border-blue-500 hover:text-blue-700 sm:flex-none" title="Buscar información en el maestro"><Search size={16} /> Buscar</button>
+                  <button type="button" onClick={setInvimaNotApplicable} className={`flex-1 rounded-lg border px-3 py-2.5 text-sm font-medium sm:flex-none ${invimaNotApplicable ? "border-amber-500 bg-amber-50 text-amber-800" : "border-slate-300 bg-white text-slate-700 hover:border-amber-500 hover:text-amber-700"}`}>No aplica</button>
+                </div>
               </div>
               <FieldError message={form2.formState.errors.registroINVIMA?.message} />
             </div>
@@ -994,21 +1061,35 @@ export default function ActaCreatePage() {
                 <label className="block text-sm font-medium text-slate-700 mb-1">Código SAP *</label>
                 <input type="hidden" {...form2.register("invimaProductId")} />
                 <input type="hidden" {...form2.register("sapCodeId")} />
-                <div className="flex gap-2">
+                <div className="flex flex-col gap-2 sm:flex-row">
                   <input {...form2.register("codigoSAP", { onBlur: (event) => autoSelectMaterial(event.target.value) })} placeholder="Ingrese únicamente el código SAP" className="min-w-0 flex-1 px-3 py-2.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                  <button type="button" onClick={async () => { const codes = await api.getSapCodes(`empresaCode=${encodeURIComponent(empresaWatch === "Humax" ? "CO11" : empresaWatch === "Farmatech" ? "CO12" : "CO13")}`); setSapCodes(Array.isArray(codes) ? codes as SapCode[] : []); setShowSapModal(true); }} className="flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700 hover:border-blue-500 hover:text-blue-700" title="Buscar cualquier código SAP"><Search size={16} /> Buscar</button>
+                  <div className="flex gap-2">
+                    <button type="button" onClick={async () => { const codes = await api.getSapCodes(`empresaCode=${encodeURIComponent(empresaWatch === "Humax" ? "CO11" : empresaWatch === "Farmatech" ? "CO12" : "CO13")}`); setSapCodes(Array.isArray(codes) ? codes as SapCode[] : []); setShowSapModal(true); }} className="flex flex-1 items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm font-medium text-slate-700 hover:border-blue-500 hover:text-blue-700 sm:flex-none" title="Buscar cualquier código SAP"><Search size={16} /> Buscar</button>
+                    <button type="button" onClick={setSapNotApplicable} className={`flex-1 rounded-lg border px-3 py-2.5 text-sm font-medium sm:flex-none ${sapNotApplicable ? "border-amber-500 bg-amber-50 text-amber-800" : "border-slate-300 bg-white text-slate-700 hover:border-amber-500 hover:text-amber-700"}`}>No aplica</button>
+                  </div>
                 </div>
                 <FieldError message={form2.formState.errors.codigoSAP?.message} />
               </div>
               <div className="order-first">
-                <label className="block text-sm font-medium text-slate-700 mb-1">Tipo de material</label>
-                <input
-                  value={selectedMasterMaterial?.clase || "Sin tipo asociado"}
-                  readOnly
+                <div className="mb-1 flex items-center justify-between gap-2">
+                  <label htmlFor="tipo-material" className="block text-sm font-medium text-slate-700">Tipo de material</label>
+                  <button type="button" onClick={() => setShowMaterialTypeModal(true)} className="inline-flex items-center gap-1 text-xs font-medium text-blue-700 hover:text-blue-900" title="Ver significado de los tipos de material">
+                    <Info size={14} /> Ver significados
+                  </button>
+                </div>
+                <select
+                  id="tipo-material"
+                  {...form2.register("tipoMaterial")}
+                  value={sapNotApplicable ? form2.watch("tipoMaterial") || "" : selectedMaterialType}
+                  onChange={(event) => form2.setValue("tipoMaterial", event.target.value, { shouldDirty: true })}
+                  disabled={!sapNotApplicable}
                   aria-label="Tipo de material asociado al código SAP"
-                  className="w-full px-3 py-2.5 text-sm border border-slate-200 bg-slate-50 text-slate-700 rounded-lg cursor-default"
-                />
-                <p className="mt-1 text-xs text-slate-500">Se completa automáticamente al seleccionar un código SAP del maestro.</p>
+                  className={`w-full px-3 py-2.5 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${sapNotApplicable ? "border-slate-300 bg-white text-slate-700" : "border-slate-200 bg-slate-50 text-slate-700 cursor-default"}`}
+                >
+                  <option value="">{sapNotApplicable ? "Seleccione el tipo de material" : "Sin tipo asociado"}</option>
+                  {MATERIAL_TYPE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                </select>
+                <p className="mt-1 text-xs text-slate-500">{sapNotApplicable ? "Seleccione el código que corresponda al material." : "Se completa automáticamente al seleccionar un código SAP del maestro."}</p>
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Número de Lote *</label>
@@ -1055,7 +1136,7 @@ export default function ActaCreatePage() {
       {/* Step 3: Economic Info */}
       {currentStep === 3 && (
         <div className="bg-white rounded-xl border border-slate-200 p-6">
-          <h2 className="text-base font-semibold text-slate-800 mb-5">Paso 4 — Información Económica</h2>
+          <h2 className="text-base font-semibold text-slate-800 mb-5">Paso 4 — Información Económica y de cantidad generada</h2>
           <form onSubmit={onStep3} noValidate className="space-y-4">
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div>
@@ -1231,7 +1312,7 @@ export default function ActaCreatePage() {
               <Row label="Registro INVIMA" value={String(formData.registroINVIMA || "")} />
               <Row label="Sustancia Controlada" value={formData.sustanciaControlada ? "Sí" : "No"} />
             </Section>
-            <Section title="Información Económica">
+            <Section title="Información Económica y de cantidad generada">
               <Row label="Peso (kg)" value={String(formData.pesoKg || 0)} />
               <Row label="Unidades" value={String(formData.cantidadUnidades || 0)} />
               <Row label="Costo Destrucción" value={`COP ${Number(formData.costoDestruccion || 0).toLocaleString("es-CO")}`} />

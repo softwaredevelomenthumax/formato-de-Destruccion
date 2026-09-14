@@ -156,6 +156,7 @@ export async function initializeDatabase() {
       IF COL_LENGTH('actas', 'responsable') IS NULL ALTER TABLE actas ADD responsable NVARCHAR(255);
       IF COL_LENGTH('actas', 'area') IS NULL ALTER TABLE actas ADD area NVARCHAR(100);
       IF COL_LENGTH('actas', 'descripcion') IS NULL ALTER TABLE actas ADD descripcion NVARCHAR(MAX);
+      IF COL_LENGTH('actas', 'tipoMaterial') IS NULL ALTER TABLE actas ADD tipoMaterial NVARCHAR(255);
       IF COL_LENGTH('actas', 'codigoSAP') IS NULL ALTER TABLE actas ADD codigoSAP NVARCHAR(100);
       IF COL_LENGTH('actas', 'numeroLote') IS NULL ALTER TABLE actas ADD numeroLote NVARCHAR(100);
       IF COL_LENGTH('actas', 'ordenProduccion') IS NULL ALTER TABLE actas ADD ordenProduccion NVARCHAR(100);

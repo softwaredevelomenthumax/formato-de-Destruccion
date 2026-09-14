@@ -27,9 +27,9 @@ pnpm run dev
 
 ##  CONFIGURACIÓN COMPLETADA
 
--  `.env` creado en raíz con `VITE_API_URL=http://localhost:3001/api`
--  `backend/.env` actualizado a `PORT=3001`
--  `src/services/api.js` fallback alineado a puerto 3001
+-  `.env` creado en raíz con `VITE_API_URL=http://localhost:3004/api`
+-  `backend/.env` actualizado a `PORT=3004`
+-  `src/services/api.js` fallback alineado a puerto 3004
 -  CORS configurado en backend para localhost:5173, localhost:8443
 
 ---
@@ -39,7 +39,7 @@ pnpm run dev
 ### FASE 1: Validación de Conexión (Crítico)
 - [ ] Verificar SQL Server está corriendo en `localhost:1433`
 - [ ] Ejecutar script de setup-db para crear esquema
-- [ ] Verificar que el backend inicia sin errores en puerto 3001
+- [ ] Verificar que el backend inicia sin errores en puerto 3004
 - [ ] Verificar que el frontend se conecta correctamente al backend
 - [ ] Probar login/registro con datos de prueba
 

@@ -34,7 +34,7 @@ Edita `.env`:
 
 ```env
 # URL del backend (ajusta según tu configuración)
-VITE_API_URL=http://localhost:3001/api
+VITE_API_URL=http://localhost:3004/api
 ```
 
 Para **producción**:
@@ -60,7 +60,7 @@ pnpm preview
 
 ## Requisitos previos
 
-El **backend DEBE estar corriendo** en `http://localhost:3001` (o la URL que hayas configurado en `.env`)
+El **backend DEBE estar corriendo** en `http://localhost:3004` (o la URL que hayas configurado en `.env`)
 
 ### Iniciar backend (en otra terminal):
 

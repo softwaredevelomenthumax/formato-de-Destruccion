@@ -149,6 +149,7 @@ export interface Acta {
   responsable: string;
   area: string;
   descripcion: string;
+  tipoMaterial?: string;
   codigoSAP: string;
   numeroLote: string;
   ordenProduccion: string;
