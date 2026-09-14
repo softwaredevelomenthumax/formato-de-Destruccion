@@ -51,6 +51,25 @@ const MATERIAL_TYPE_OPTIONS = [
 
 const INVIMA_CLASSIFICATIONS = new Set(["MP", "ME", "PT"]);
 
+const normalizeClassification = (value: unknown) => {
+  const normalized = String(value || "").trim().toUpperCase();
+  const aliases: Record<string, string> = {
+    ROH: "MP",
+    FERT: "PT",
+    HALB: "ST",
+    UNBW: "reactivos",
+    REACTIVOS: "reactivos",
+    RESIDUO_COMUN: "residuo_comun",
+    RESIDUO_APROVECHABLE: "residuo_aprovechable",
+    MATERIA_PRIMA: "materia_prima",
+    PRODUCTO_SEMITERMINADO: "producto_semiterminado",
+    PRODUCTO_TERMINADO: "producto_terminado",
+    MATERIAL_EMPAQUE: "material_empaque",
+  };
+  if (aliases[normalized]) return aliases[normalized];
+  return value;
+};
+
 const getMaterialClassification = (product: InvimaProduct) => {
   const classification = (product.clase || "").trim().toUpperCase();
   if (INVIMA_CLASSIFICATIONS.has(classification)) return classification;
@@ -332,6 +351,8 @@ export default function ActaCreatePage() {
   const [sapSearch, setSapSearch] = useState("");
   const [showSapModal, setShowSapModal] = useState(false);
   const [showMaterialTypeModal, setShowMaterialTypeModal] = useState(false);
+  const [showMoreProductsModal, setShowMoreProductsModal] = useState(false);
+  const [showMaterialWarningModal, setShowMaterialWarningModal] = useState(false);
   const [materials, setMaterials] = useState<ActaMaterial[]>([]);
   const [costoNoAplica, setCostoNoAplica] = useState(false);
   const [maxStepReached, setMaxStepReached] = useState(0);
@@ -394,7 +415,7 @@ export default function ActaCreatePage() {
       numeroLote: editingActa.numeroLote,
       ordenProduccion: editingActa.ordenProduccion,
       sustanciaControlada: editingActa.sustanciaControlada,
-      clasificacion: editingActa.clasificacion,
+      clasificacion: normalizeClassification(editingActa.clasificacion) as Step2Data["clasificacion"],
       fechaVencimiento: editingActa.fechaVencimiento,
       registroINVIMA: editingActa.registroINVIMA,
       estadoInvima: editingActa.estadoInvima || "N/A",
@@ -410,7 +431,7 @@ export default function ActaCreatePage() {
         numeroLote: lastMaterial.numeroLote,
         ordenProduccion: lastMaterial.ordenProduccion,
         sustanciaControlada: lastMaterial.sustanciaControlada,
-        clasificacion: lastMaterial.clasificacion,
+        clasificacion: normalizeClassification(lastMaterial.clasificacion) as Step2Data["clasificacion"],
         fechaVencimiento: lastMaterial.fechaVencimiento,
         registroINVIMA: lastMaterial.registroINVIMA,
         estadoInvima: lastMaterial.estadoInvima || "N/A",
@@ -669,6 +690,60 @@ export default function ActaCreatePage() {
     setCurrentStep(3);
   });
 
+  const hasCompleteMaterial = (currentMaterial: Partial<Step2Data>) => Boolean(
+      String(currentMaterial.descripcion || "").trim() &&
+      String(currentMaterial.codigoSAP || "").trim() &&
+      String(currentMaterial.numeroLote || "").trim() &&
+      String(currentMaterial.ordenProduccion || "").trim() &&
+      String(currentMaterial.fechaVencimiento || "").trim() &&
+      String(currentMaterial.registroINVIMA || "").trim() &&
+      currentMaterial.clasificacion &&
+      (currentMaterial.sustanciaControlada === true || currentMaterial.sustanciaControlada === false)
+    );
+
+  const continueFromMaterialStep = () => {
+    const currentMaterial = form2.getValues();
+    const hasCompleteCurrentMaterial = hasCompleteMaterial(currentMaterial);
+
+    if (materials.length === 0 && !hasCompleteCurrentMaterial) {
+      form2.clearErrors();
+      setShowMaterialWarningModal(true);
+      return;
+    }
+
+    if (materials.length > 0 && !hasCompleteCurrentMaterial) {
+      setShowMoreProductsModal(true);
+      return;
+    }
+
+    void onStep2();
+  };
+
+  const continueWithSavedProducts = () => {
+    if (materials.length === 0) return;
+    form2.clearErrors();
+    setFormData((prev) => ({ ...prev, ...materials[0] }));
+    setCompletedSteps((prev) => [...new Set([...prev, 2])]);
+    setShowMoreProductsModal(false);
+    setCurrentStep(3);
+  };
+
+  const handleAddProduct = () => {
+    const currentMaterial = form2.getValues();
+    if (materials.length === 0 && !hasCompleteMaterial(currentMaterial)) {
+      form2.clearErrors();
+      setShowMaterialWarningModal(true);
+      return;
+    }
+
+    if (materials.length > 0 && !hasCompleteMaterial(currentMaterial)) {
+      setShowMoreProductsModal(true);
+      return;
+    }
+
+    void form2.handleSubmit(addMaterial)();
+  };
+
   const materialFromData = (data: Step2Data): ActaMaterial => ({
     descripcion: data.descripcion,
     tipoMaterial: data.tipoMaterial,
@@ -676,7 +751,7 @@ export default function ActaCreatePage() {
     numeroLote: data.numeroLote,
     ordenProduccion: data.ordenProduccion,
     sustanciaControlada: data.sustanciaControlada,
-    clasificacion: data.clasificacion,
+    clasificacion: normalizeClassification(data.clasificacion) as Step2Data["clasificacion"],
     fechaVencimiento: data.fechaVencimiento,
     registroINVIMA: data.registroINVIMA,
     estadoInvima: data.estadoInvima,
@@ -684,7 +759,19 @@ export default function ActaCreatePage() {
     sapCodeId: data.sapCodeId,
   });
 
-  const materialsForSave = (current: Step2Data) => [...materials, materialFromData(current)];
+  const materialsForSave = (current: Partial<Step2Data>) => {
+    if (!String(current.descripcion || "").trim()) return materials;
+
+    const currentMaterial = materialFromData(current as Step2Data);
+    const isAlreadyAdded = materials.some((material) =>
+      material.descripcion === currentMaterial.descripcion &&
+      material.codigoSAP === currentMaterial.codigoSAP &&
+      material.numeroLote === currentMaterial.numeroLote &&
+      material.ordenProduccion === currentMaterial.ordenProduccion
+    );
+
+    return isAlreadyAdded ? materials : [...materials, currentMaterial];
+  };
 
   const addMaterial = (data: Step2Data) => {
     setMaterials((current) => [...current, materialFromData(data)]);
@@ -1116,6 +1203,43 @@ export default function ActaCreatePage() {
         </div>
       </Modal>
 
+      <Modal open={showMoreProductsModal} onClose={() => setShowMoreProductsModal(false)} title="Agregar más productos" size="sm">
+        <div className="space-y-4">
+          <p className="text-sm leading-relaxed text-slate-600">¿Desea agregar más productos al acta?</p>
+          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <button
+              type="button"
+              onClick={() => setShowMoreProductsModal(false)}
+              className="rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
+            >
+              Sí, agregar más
+            </button>
+            <button
+              type="button"
+              onClick={continueWithSavedProducts}
+              className="rounded-lg bg-blue-700 px-4 py-2.5 text-sm font-medium text-white hover:bg-blue-800"
+            >
+              No, continuar
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal open={showMaterialWarningModal} onClose={() => setShowMaterialWarningModal(false)} title="Información del material incompleta" size="sm">
+        <div className="space-y-4">
+          <p className="text-sm leading-relaxed text-slate-600">Debe agregar mínimo un producto a la tabla o completar toda la información del material antes de continuar.</p>
+          <div className="flex justify-end">
+            <button
+              type="button"
+              onClick={() => setShowMaterialWarningModal(false)}
+              className="rounded-lg bg-blue-700 px-4 py-2.5 text-sm font-medium text-white hover:bg-blue-800"
+            >
+              Cerrar
+            </button>
+          </div>
+        </div>
+      </Modal>
+
       {/* Step 2: Control condition */}
       {currentStep === 1 && (
         <div className="bg-white rounded-xl border border-slate-200 p-6">
@@ -1145,7 +1269,7 @@ export default function ActaCreatePage() {
       {currentStep === 2 && (
         <div className="bg-white rounded-xl border border-slate-200 p-6">
           <h2 className="text-base font-semibold text-slate-800 mb-5">Paso 3 — Información del Material</h2>
-          <form onSubmit={onStep2} noValidate className="space-y-4">
+          <form onSubmit={(event) => { event.preventDefault(); continueFromMaterialStep(); }} noValidate className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">Código INVIMA *</label>
               <div className="flex flex-col gap-2 sm:flex-row">
@@ -1235,8 +1359,8 @@ export default function ActaCreatePage() {
             <div className="flex justify-between pt-2">
               <button type="button" onClick={() => setCurrentStep(1)} className="h-11 min-w-[140px] px-4 py-2.5 text-sm text-slate-700 font-medium bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors">← Anterior</button>
               <div className="flex flex-col-reverse gap-2 sm:flex-row">
-                <button type="button" onClick={form2.handleSubmit(addMaterial)} className="h-11 px-4 py-2.5 rounded-lg text-sm font-medium border border-blue-300 text-blue-700 hover:bg-blue-50 transition-colors">+ Agregar producto</button>
-                <button type="submit" className="h-11 min-w-[140px] px-5 py-2.5 rounded-lg text-sm font-medium bg-blue-700 text-white hover:bg-blue-800 transition-colors">Siguiente →</button>
+                <button type="button" onClick={handleAddProduct} className="h-11 px-4 py-2.5 rounded-lg text-sm font-medium border border-blue-300 text-blue-700 hover:bg-blue-50 transition-colors">+ {materials.length === 0 ? "Agregar producto" : "Agregar otro"}</button>
+                <button type="button" onClick={continueFromMaterialStep} className="h-11 min-w-[140px] px-5 py-2.5 rounded-lg text-sm font-medium bg-blue-700 text-white hover:bg-blue-800 transition-colors">Siguiente →</button>
               </div>
             </div>
           </form>
@@ -1265,7 +1389,7 @@ export default function ActaCreatePage() {
                   <tbody className="divide-y divide-slate-100">
                     {materials.length === 0 ? (
                       <tr>
-                        <td colSpan={11} className="px-3 py-5 text-center text-xs text-slate-500">Aún no hay productos agregados. Complete el formulario y pulse “+ Agregar producto”.</td>
+                        <td colSpan={11} className="px-3 py-5 text-center text-xs text-slate-500">Puede continuar con un solo producto pulsando “Siguiente”. Use “Agregar otro producto” únicamente si necesita incluir más.</td>
                       </tr>
                     ) : materials.map((material, index) => (
                         <tr key={`${material.codigoSAP}-${index}`} className="hover:bg-blue-50/50">
@@ -1296,9 +1420,9 @@ export default function ActaCreatePage() {
         <div className="bg-white rounded-xl border border-slate-200 p-6">
           <h2 className="text-base font-semibold text-slate-800 mb-5">Paso 4 — Información Económica y de cantidad generada</h2>
           <form onSubmit={onStep3} noValidate className="space-y-4">
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Peso (kg) *</label>
+            <div className="grid grid-cols-1 items-start gap-4 sm:grid-cols-3">
+              <div className="flex min-w-0 flex-col">
+                <label className="mb-1 flex h-10 items-start text-sm font-medium leading-tight text-slate-700">Peso (kg) *</label>
                 <input
                   {...form3.register("pesoKg")}
                   type="text"
@@ -1309,8 +1433,8 @@ export default function ActaCreatePage() {
                 />
                 <FieldError message={form3.formState.errors.pesoKg?.message} />
               </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Cantidad (unidades) *</label>
+              <div className="flex min-w-0 flex-col">
+                <label className="mb-1 flex h-10 items-start text-sm font-medium leading-tight text-slate-700">Cantidad (unidades) *</label>
                 <input
                   {...form3.register("cantidadUnidades")}
                   type="text"
@@ -1321,9 +1445,9 @@ export default function ActaCreatePage() {
                 />
                 <FieldError message={form3.formState.errors.cantidadUnidades?.message} />
               </div>
-              <div>
-                <div className="mb-1 flex items-center justify-between gap-2">
-                  <label className="block text-sm font-medium text-slate-700">Costo del material (COP)</label>
+              <div className="flex min-w-0 flex-col">
+                <div className="mb-1 flex h-10 items-start gap-2">
+                  <label className="min-w-0 flex-1 text-sm font-medium leading-tight text-slate-700">Costo del material (COP)</label>
                   <button
                     type="button"
                     onClick={() => {
@@ -1331,7 +1455,7 @@ export default function ActaCreatePage() {
                       setCostoNoAplica(nextValue);
                       form3.setValue("costoDestruccion", nextValue ? 0 : "", { shouldValidate: true, shouldDirty: true });
                     }}
-                    className={`rounded-md border px-2.5 py-1 text-xs font-medium transition-colors ${costoNoAplica ? "border-amber-400 bg-amber-50 text-amber-800" : "border-slate-300 bg-white text-slate-600 hover:border-amber-400 hover:text-amber-700"}`}
+                    className={`w-[104px] shrink-0 rounded-md border px-2 py-1 text-xs font-medium leading-tight transition-colors ${costoNoAplica ? "border-amber-400 bg-amber-50 text-amber-800" : "border-slate-300 bg-white text-slate-600 hover:border-amber-400 hover:text-amber-700"}`}
                   >
                     {costoNoAplica ? "No aplica" : "Marcar no aplica"}
                   </button>
