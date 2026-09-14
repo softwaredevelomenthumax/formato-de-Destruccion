@@ -39,6 +39,30 @@ async function getActiveUser(pool, userId) {
   return result.recordset[0];
 }
 
+async function insertActaMaterial(pool, actaId, material, index) {
+  const id = `am${Date.now()}-${index}-${Math.random().toString(36).slice(2, 8)}`;
+  await pool.request()
+    .input('id', id)
+    .input('actaId', actaId)
+    .input('descripcion', material.descripcion)
+    .input('tipoMaterial', material.tipoMaterial)
+    .input('codigoSAP', material.codigoSAP)
+    .input('numeroLote', material.numeroLote)
+    .input('ordenProduccion', material.ordenProduccion)
+    .input('sustanciaControlada', material.sustanciaControlada)
+    .input('clasificacion', material.clasificacion)
+    .input('fechaVencimiento', material.fechaVencimiento)
+    .input('registroINVIMA', material.registroINVIMA)
+    .input('estadoInvima', material.estadoInvima)
+    .input('invimaProductId', material.invimaProductId)
+    .input('sapCodeId', material.sapCodeId)
+    .query(`
+      INSERT INTO acta_materiales
+      (id, actaId, descripcion, tipoMaterial, codigoSAP, numeroLote, ordenProduccion, sustanciaControlada, clasificacion, fechaVencimiento, registroINVIMA, estadoInvima, invimaProductId, sapCodeId)
+      VALUES (@id, @actaId, @descripcion, @tipoMaterial, @codigoSAP, @numeroLote, @ordenProduccion, @sustanciaControlada, @clasificacion, @fechaVencimiento, @registroINVIMA, @estadoInvima, @invimaProductId, @sapCodeId)
+    `);
+}
+
 async function getNextConsecutivo(pool) {
   const year = new Date().getFullYear();
   const pattern = `ACT-${year}-%`;
@@ -69,7 +93,7 @@ export async function createActa(req, res) {
       responsable, area, descripcion, tipoMaterial, codigoSAP, numeroLote, ordenProduccion,
       sustanciaControlada, clasificacion, fechaVencimiento, registroINVIMA, estadoInvima,
       pesoKg, cantidadUnidades, costoDestruccion, causal, otraCausal, observaciones,
-      adjuntos, requiereCostos, cecoId, invimaProductId, sapCodeId,
+      adjuntos, requiereCostos, cecoId, invimaProductId, sapCodeId, materiales,
     } = req.body;
     const pool = getPool();
 
@@ -113,6 +137,13 @@ export async function createActa(req, res) {
         (id, consecutivo, status, empresa, centroCostos, fecha, solicitanteId, solicitanteNombre, responsable, area, descripcion, tipoMaterial, codigoSAP, numeroLote, ordenProduccion, sustanciaControlada, clasificacion, fechaVencimiento, registroINVIMA, estadoInvima, pesoKg, cantidadUnidades, costoDestruccion, causal, otraCausal, observaciones, adjuntos, requiereCostos, cecoId, invimaProductId, sapCodeId)
         VALUES (@id, @consecutivo, @status, @empresa, @centroCostos, @fecha, @solicitanteId, @solicitanteNombre, @responsable, @area, @descripcion, @tipoMaterial, @codigoSAP, @numeroLote, @ordenProduccion, @sustanciaControlada, @clasificacion, @fechaVencimiento, @registroINVIMA, @estadoInvima, @pesoKg, @cantidadUnidades, @costoDestruccion, @causal, @otraCausal, @observaciones, @adjuntos, @requiereCostos, @cecoId, @invimaProductId, @sapCodeId)
       `);
+
+    const materialItems = Array.isArray(materiales) && materiales.length > 0
+      ? materiales
+      : [{ descripcion, tipoMaterial, codigoSAP, numeroLote, ordenProduccion, sustanciaControlada, clasificacion, fechaVencimiento, registroINVIMA, estadoInvima, invimaProductId, sapCodeId }];
+    for (const [index, material] of materialItems.entries()) {
+      await insertActaMaterial(pool, id, material, index);
+    }
 
     // Crear historial inicial
     const histId = `h${Date.now()}`;
@@ -164,6 +195,7 @@ export async function createActa(req, res) {
       aprobaciones,
       adjuntos: adjuntos || [],
       requiereCostos: !!requiereCostos,
+      materiales: materialItems,
     });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -175,7 +207,13 @@ export async function getActas(req, res) {
   try {
     const pool = getPool();
     const result = await pool.request().query('SELECT * FROM actas ORDER BY createdAt DESC');
-    res.json(result.recordset);
+    const materialsResult = await pool.request().query('SELECT * FROM acta_materiales ORDER BY createdAt, id');
+    const materialsByActa = materialsResult.recordset.reduce((groups, material) => {
+      if (!groups[material.actaId]) groups[material.actaId] = [];
+      groups[material.actaId].push(material);
+      return groups;
+    }, {});
+    res.json(result.recordset.map((acta) => ({ ...acta, materiales: materialsByActa[acta.id] || [] })));
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -207,10 +245,15 @@ export async function getActaById(req, res) {
       .input('actaId', id)
       .query('SELECT paso, status, aprobador, comentario FROM acta_aprobaciones WHERE actaId = @actaId');
 
+    const materialesResult = await pool.request()
+      .input('actaId', id)
+      .query('SELECT * FROM acta_materiales WHERE actaId = @actaId ORDER BY createdAt, id');
+
     res.json({
       ...acta,
       historial: historialResult.recordset,
       aprobaciones: aprobacionesResult.recordset,
+      materiales: materialesResult.recordset,
     });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -228,7 +271,7 @@ export async function updateActa(req, res) {
     const request = pool.request().input('id', id);
 
     Object.entries(updates).forEach(([key, value]) => {
-      if (key !== 'id' && key !== 'historial' && key !== 'aprobaciones') {
+      if (key !== 'id' && key !== 'historial' && key !== 'aprobaciones' && key !== 'materiales') {
         fields.push(`${key} = @${key}`);
         request.input(key, value);
       }
@@ -236,6 +279,13 @@ export async function updateActa(req, res) {
 
     if (fields.length > 0) {
       await request.query(`UPDATE actas SET ${fields.join(', ')}, updatedAt = GETDATE() WHERE id = @id`);
+    }
+
+    if (Array.isArray(updates.materiales) && updates.materiales.length > 0) {
+      await pool.request().input('actaId', id).query('DELETE FROM acta_materiales WHERE actaId = @actaId');
+      for (const [index, material] of updates.materiales.entries()) {
+        await insertActaMaterial(pool, id, material, index);
+      }
     }
 
     res.json({ message: 'Acta actualizada' });
@@ -253,6 +303,7 @@ export async function deleteActa(req, res) {
     // Eliminar historial y aprobaciones primero
     await pool.request().input('actaId', id).query('DELETE FROM acta_historial WHERE actaId = @actaId');
     await pool.request().input('actaId', id).query('DELETE FROM acta_aprobaciones WHERE actaId = @actaId');
+    await pool.request().input('actaId', id).query('DELETE FROM acta_materiales WHERE actaId = @actaId');
     await pool.request().input('id', id).query('DELETE FROM actas WHERE id = @id');
 
     res.json({ message: 'Acta eliminada' });

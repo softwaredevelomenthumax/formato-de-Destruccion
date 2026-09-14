@@ -173,6 +173,24 @@ export interface Acta {
   cecoId?: string;
   invimaProductId?: string;
   sapCodeId?: string;
+  materiales?: ActaMaterial[];
+}
+
+export interface ActaMaterial {
+  id?: string;
+  actaId?: string;
+  descripcion: string;
+  tipoMaterial?: string;
+  codigoSAP: string;
+  numeroLote: string;
+  ordenProduccion: string;
+  sustanciaControlada: boolean;
+  clasificacion: ClasificacionMaterial;
+  fechaVencimiento: string;
+  registroINVIMA: string;
+  estadoInvima?: "Vigente" | "Vencido" | "Cancelado" | "N/A";
+  invimaProductId?: string;
+  sapCodeId?: string;
 }
 
 export interface Notification {

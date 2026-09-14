@@ -14,7 +14,7 @@ import { Modal } from "../../components/ui/Modal";
 import {
   CLASIFICACION_LABELS, CAUSAL_LABELS, CAUSAL_DESCRIPTIONS, EMPRESAS, AREAS
 } from "../../constants";
-import type { CausalDestruccion, Ceco, Empresa, InvimaProduct, SapCode } from "../../types";
+import type { ActaMaterial, CausalDestruccion, Ceco, Empresa, InvimaProduct, SapCode } from "../../types";
 import { api } from "../../services/api.ts";
 import { toast } from "sonner";
 
@@ -57,6 +57,14 @@ const getMaterialClassification = (product: InvimaProduct) => {
 
   const materialCode = (product.codigoMaterial || "").trim().toUpperCase();
   return MATERIAL_TYPE_OPTIONS.find((option) => option.value === materialCode)?.classification || classification;
+};
+
+const getMaterialTypeCode = (product: InvimaProduct) => {
+  const materialCode = (product.codigoMaterial || "").trim().toUpperCase();
+  if (MATERIAL_TYPE_OPTIONS.some((option) => option.value === materialCode)) return materialCode;
+
+  const classification = (product.clase || "").trim().toUpperCase();
+  return MATERIAL_TYPE_OPTIONS.find((option) => option.classification === classification)?.value || materialCode || classification;
 };
 
 const CAUSAL_ICONS: Record<CausalDestruccion, ReactNode> = {
@@ -227,7 +235,7 @@ const step2Schema = z.object({
   sapCodeId: z.string().optional(),
   tipoMaterial: z.string().optional(),
 });
-const numberField = (label: string, maxValue: number, integer = false) =>
+const numberField = (label: string, maxValue: number, integer = false, allowZero = false) =>
   z.any().superRefine((value, ctx) => {
     if (value === "" || value === null || value === undefined) {
       ctx.addIssue({
@@ -248,10 +256,10 @@ const numberField = (label: string, maxValue: number, integer = false) =>
       return;
     }
 
-    if (numericValue <= 0) {
+    if (numericValue < 0 || (!allowZero && numericValue === 0)) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: `${label} debe ser mayor a 0`,
+        message: `${label} debe ser ${allowZero ? "mayor o igual a 0" : "mayor a 0"}`,
       });
       return;
     }
@@ -275,7 +283,7 @@ const numberField = (label: string, maxValue: number, integer = false) =>
 const step3Schema = z.object({
   pesoKg: numberField("Peso", 10000000000000),
   cantidadUnidades: numberField("Cantidad", 10000000000000, true),
-  costoDestruccion: numberField("Costo de destrucción", 10000000000000),
+  costoDestruccion: numberField("Costo del material", 10000000000000, false, true),
 });
 
 type Step1Data = z.infer<typeof step1Schema>;
@@ -324,6 +332,10 @@ export default function ActaCreatePage() {
   const [sapSearch, setSapSearch] = useState("");
   const [showSapModal, setShowSapModal] = useState(false);
   const [showMaterialTypeModal, setShowMaterialTypeModal] = useState(false);
+  const [materials, setMaterials] = useState<ActaMaterial[]>([]);
+  const [costoNoAplica, setCostoNoAplica] = useState(false);
+  const [maxStepReached, setMaxStepReached] = useState(0);
+  const draftLoadedRef = useRef(false);
   const [cecos, setCecos] = useState<Ceco[]>([]);
   const [cecoSearch, setCecoSearch] = useState("");
   const [showCecoModal, setShowCecoModal] = useState(false);
@@ -363,6 +375,10 @@ export default function ActaCreatePage() {
   }, [user?.area, form1]);
 
   useEffect(() => {
+    setMaxStepReached((previous) => Math.max(previous, currentStep));
+  }, [currentStep]);
+
+  useEffect(() => {
     if (!editingActa) return;
 
     form1.reset({
@@ -384,11 +400,33 @@ export default function ActaCreatePage() {
       estadoInvima: editingActa.estadoInvima || "N/A",
       tipoMaterial: editingActa.tipoMaterial,
     });
+    const existingMaterials = editingActa.materiales || [];
+    if (existingMaterials.length > 1) {
+      setMaterials(existingMaterials.slice(0, -1));
+      const lastMaterial = existingMaterials[existingMaterials.length - 1];
+      form2.reset({
+        descripcion: lastMaterial.descripcion,
+        codigoSAP: lastMaterial.codigoSAP,
+        numeroLote: lastMaterial.numeroLote,
+        ordenProduccion: lastMaterial.ordenProduccion,
+        sustanciaControlada: lastMaterial.sustanciaControlada,
+        clasificacion: lastMaterial.clasificacion,
+        fechaVencimiento: lastMaterial.fechaVencimiento,
+        registroINVIMA: lastMaterial.registroINVIMA,
+        estadoInvima: lastMaterial.estadoInvima || "N/A",
+        tipoMaterial: lastMaterial.tipoMaterial,
+        invimaProductId: lastMaterial.invimaProductId,
+        sapCodeId: lastMaterial.sapCodeId,
+      });
+    } else {
+      setMaterials([]);
+    }
     form3.reset({
       pesoKg: editingActa.pesoKg,
       cantidadUnidades: editingActa.cantidadUnidades,
       costoDestruccion: editingActa.costoDestruccion,
     });
+    setCostoNoAplica(Number(editingActa.costoDestruccion) === 0);
     setFormData({
       ...editingActa,
       tipoMaterial: editingActa.tipoMaterial,
@@ -407,10 +445,14 @@ export default function ActaCreatePage() {
   useEffect(() => {
     try {
       const savedDraft = window.localStorage.getItem(ACTA_DRAFT_STORAGE_KEY);
-      if (!savedDraft) return;
+      if (!savedDraft) {
+        draftLoadedRef.current = true;
+        return;
+      }
 
       const parsedDraft = JSON.parse(savedDraft) as {
         currentStep?: number;
+        maxStepReached?: number;
         form1?: Partial<Step1Data>;
         form2?: Partial<Step2Data>;
         form3?: Partial<Step3Data>;
@@ -420,6 +462,8 @@ export default function ActaCreatePage() {
         observaciones?: string;
         adjuntos?: string[];
         selectedEmpresa?: Empresa;
+        materials?: ActaMaterial[];
+        costoNoAplica?: boolean;
       };
 
       if (!parsedDraft) return;
@@ -428,22 +472,30 @@ export default function ActaCreatePage() {
       form2.reset({ ...form2.getValues(), ...parsedDraft.form2 });
       form3.reset({ ...form3.getValues(), ...parsedDraft.form3 });
       setCurrentStep(typeof parsedDraft.currentStep === "number" ? parsedDraft.currentStep : 0);
+      setMaxStepReached(typeof parsedDraft.maxStepReached === "number" ? parsedDraft.maxStepReached : parsedDraft.currentStep || 0);
       setSelectedCausal(parsedDraft.selectedCausal ?? null);
       setPendingCausal(parsedDraft.pendingCausal ?? null);
       setOtraCausal(parsedDraft.otraCausal ?? "");
       setObservaciones(parsedDraft.observaciones ?? "");
       setAdjuntos(parsedDraft.adjuntos ?? []);
       setSelectedEmpresa(parsedDraft.selectedEmpresa ?? "Humax");
+      setMaterials(parsedDraft.materials ?? []);
+      setCostoNoAplica(parsedDraft.costoNoAplica ?? false);
     } catch {
       // Ignorar errores de almacenamiento local
+    } finally {
+      draftLoadedRef.current = true;
     }
   }, []);
 
   useEffect(() => {
+    if (!draftLoadedRef.current) return;
+
     const persistDraft = () => {
       try {
         const payload = {
           currentStep,
+          maxStepReached,
           form1: form1Values,
           form2: form2Values,
           form3: form3Values,
@@ -453,6 +505,8 @@ export default function ActaCreatePage() {
           observaciones,
           adjuntos,
           selectedEmpresa,
+          materials,
+          costoNoAplica,
         };
         window.localStorage.setItem(ACTA_DRAFT_STORAGE_KEY, JSON.stringify(payload));
       } catch {
@@ -464,11 +518,11 @@ export default function ActaCreatePage() {
 
     return () => {
       const path = window.location.pathname;
-      if (path !== "/actas/nueva") {
+      if (!path.startsWith("/actas/nueva")) {
         window.localStorage.removeItem(ACTA_DRAFT_STORAGE_KEY);
       }
     };
-  }, [currentStep, form1Values, form2Values, form3Values, selectedCausal, pendingCausal, otraCausal, observaciones, adjuntos, selectedEmpresa]);
+  }, [currentStep, maxStepReached, form1Values, form2Values, form3Values, selectedCausal, pendingCausal, otraCausal, observaciones, adjuntos, selectedEmpresa, materials, costoNoAplica]);
 
   const empresaWatch = form1.watch("empresa");
   const centroCostosWatch = form1.watch("centroCostos");
@@ -507,7 +561,7 @@ export default function ActaCreatePage() {
   const selectInvima = async (product: InvimaProduct) => {
     form2.setValue("invimaProductId", product.id);
     form2.setValue("registroINVIMA", product.registryNumber);
-    form2.setValue("tipoMaterial", product.codigoMaterial || product.clase || "", { shouldDirty: true });
+    form2.setValue("tipoMaterial", getMaterialTypeCode(product), { shouldDirty: true });
     if (product.codigo) form2.setValue("codigoSAP", product.codigo, { shouldValidate: true });
     form2.setValue("descripcion", product.productName);
     const masterType = (product.clase || "").toUpperCase();
@@ -541,7 +595,7 @@ export default function ActaCreatePage() {
   const sapNotApplicable = form2.watch("codigoSAP") === "N/A";
   const masterType = (selectedMasterMaterial?.clase || "").toUpperCase();
   const classificationLocked = !sapNotApplicable && !!selectedMasterMaterial && (masterType.includes("ROH") || masterType === "MP" || masterType.includes("FERT") || masterType === "PT" || masterType.includes("HALB") || masterType === "ST" || masterType.includes("UNBW") || masterType === "ME");
-  const selectedMaterialType = selectedMasterMaterial?.codigoMaterial || selectedMasterMaterial?.clase || "";
+  const selectedMaterialType = selectedMasterMaterial ? getMaterialTypeCode(selectedMasterMaterial) : "";
 
   const setInvimaNotApplicable = () => {
     form2.setValue("registroINVIMA", "N/A", { shouldValidate: true, shouldDirty: true });
@@ -563,7 +617,7 @@ export default function ActaCreatePage() {
     if (material) {
       form2.setValue("invimaProductId", material.id);
       form2.setValue("registroINVIMA", material.registryNumber || "N/A");
-      form2.setValue("tipoMaterial", material.codigoMaterial || material.clase || "", { shouldDirty: true });
+      form2.setValue("tipoMaterial", getMaterialTypeCode(material), { shouldDirty: true });
       form2.setValue("descripcion", material.productName);
       const masterType = (material.clase || "").toUpperCase();
       const classification = masterType.includes("ROH") || masterType.includes("MP") ? "MP"
@@ -615,6 +669,44 @@ export default function ActaCreatePage() {
     setCurrentStep(3);
   });
 
+  const materialFromData = (data: Step2Data): ActaMaterial => ({
+    descripcion: data.descripcion,
+    tipoMaterial: data.tipoMaterial,
+    codigoSAP: data.codigoSAP,
+    numeroLote: data.numeroLote,
+    ordenProduccion: data.ordenProduccion,
+    sustanciaControlada: data.sustanciaControlada,
+    clasificacion: data.clasificacion,
+    fechaVencimiento: data.fechaVencimiento,
+    registroINVIMA: data.registroINVIMA,
+    estadoInvima: data.estadoInvima,
+    invimaProductId: data.invimaProductId,
+    sapCodeId: data.sapCodeId,
+  });
+
+  const materialsForSave = (current: Step2Data) => [...materials, materialFromData(current)];
+
+  const addMaterial = (data: Step2Data) => {
+    setMaterials((current) => [...current, materialFromData(data)]);
+    form2.reset({
+      descripcion: "",
+      codigoSAP: "",
+      numeroLote: "",
+      ordenProduccion: "",
+      sustanciaControlada: data.sustanciaControlada,
+      clasificacion: undefined,
+      fechaVencimiento: "",
+      registroINVIMA: "",
+      estadoInvima: "N/A",
+      tipoMaterial: "",
+      invimaProductId: undefined,
+      sapCodeId: undefined,
+    });
+    setInvimaSearch("");
+    setSapCodes([]);
+    toast.success("Producto agregado al acta. Ahora diligencie el siguiente.");
+  };
+
   const onStep3 = form3.handleSubmit((data) => {
     setFormData((prev) => ({ ...prev, ...data }));
     setCompletedSteps((prev) => [...new Set([...prev, 3])]);
@@ -636,6 +728,7 @@ export default function ActaCreatePage() {
     if (!user || !selectedCausal) return;
     try {
       const data = { ...formData } as any;
+      const materialItems = materialsForSave(data as Step2Data);
       if (editingActa) {
         await updateActa(editingActa.id, {
           descripcion: data.descripcion || "",
@@ -657,6 +750,7 @@ export default function ActaCreatePage() {
           otraCausal: otraCausal || undefined,
           observaciones,
           adjuntos,
+          materiales: materialItems,
           status: "borrador",
         });
         window.localStorage.removeItem(ACTA_DRAFT_STORAGE_KEY);
@@ -693,6 +787,7 @@ export default function ActaCreatePage() {
       otraCausal: otraCausal || undefined,
       observaciones,
       adjuntos,
+      materiales: materialItems,
       });
       window.localStorage.removeItem(ACTA_DRAFT_STORAGE_KEY);
       toast.success(`Borrador guardado: ${acta.consecutivo}`);
@@ -706,6 +801,7 @@ export default function ActaCreatePage() {
     if (!user || !selectedCausal) return;
     try {
       const data = { ...formData } as any;
+      const materialItems = materialsForSave(data as Step2Data);
       if (editingActa) {
         await updateActa(editingActa.id, {
           descripcion: data.descripcion || "",
@@ -727,6 +823,7 @@ export default function ActaCreatePage() {
           otraCausal: otraCausal || undefined,
           observaciones,
           adjuntos,
+          materiales: materialItems,
         });
         await sendActa(editingActa.id, user.id, user.nombre);
         window.localStorage.removeItem(ACTA_DRAFT_STORAGE_KEY);
@@ -763,6 +860,7 @@ export default function ActaCreatePage() {
       otraCausal: otraCausal || undefined,
       observaciones,
       adjuntos,
+      materiales: materialItems,
       });
       await sendActa(acta.id, user.id, user.nombre);
       window.localStorage.removeItem(ACTA_DRAFT_STORAGE_KEY);
@@ -782,6 +880,9 @@ export default function ActaCreatePage() {
     true,
   ];
   const progress = filled.filter(Boolean).length;
+  const materialSummary = formData.descripcion
+    ? materialsForSave(formData as Step2Data)
+    : materials;
 
   return (
     <div className="max-w-3xl mx-auto space-y-6">
@@ -795,7 +896,13 @@ export default function ActaCreatePage() {
       <div className="bg-white rounded-xl border border-slate-200 p-5">
         <ProgressBar value={progress} max={6} label="Progreso del formulario" />
         <div className="mt-5">
-          <Stepper steps={STEPS} currentStep={currentStep} completedSteps={completedSteps} />
+          <Stepper
+            steps={STEPS}
+            currentStep={currentStep}
+            completedSteps={completedSteps}
+            maxStepReached={maxStepReached}
+            onStepClick={setCurrentStep}
+          />
         </div>
       </div>
 
@@ -1127,9 +1234,36 @@ export default function ActaCreatePage() {
             </div>
             <div className="flex justify-between pt-2">
               <button type="button" onClick={() => setCurrentStep(1)} className="h-11 min-w-[140px] px-4 py-2.5 text-sm text-slate-700 font-medium bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors">← Anterior</button>
-              <button type="submit" className="h-11 min-w-[140px] px-5 py-2.5 rounded-lg text-sm font-medium bg-blue-700 text-white hover:bg-blue-800 transition-colors">Siguiente →</button>
+              <div className="flex flex-col-reverse gap-2 sm:flex-row">
+                <button type="button" onClick={form2.handleSubmit(addMaterial)} className="h-11 px-4 py-2.5 rounded-lg text-sm font-medium border border-blue-300 text-blue-700 hover:bg-blue-50 transition-colors">+ Agregar producto</button>
+                <button type="submit" className="h-11 min-w-[140px] px-5 py-2.5 rounded-lg text-sm font-medium bg-blue-700 text-white hover:bg-blue-800 transition-colors">Siguiente →</button>
+              </div>
             </div>
           </form>
+          {materials.length > 0 && (
+            <div className="mt-6 rounded-xl border border-slate-200 bg-slate-50 p-3">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-semibold text-slate-700">Productos agregados</h3>
+                <span className="rounded-full bg-blue-100 px-2.5 py-1 text-xs font-semibold text-blue-700">{materials.length}</span>
+              </div>
+              <div className="mt-3 flex gap-3 overflow-x-auto pb-1">
+                {materials.map((material, index) => (
+                  <div key={`${material.codigoSAP}-${index}`} className="w-64 shrink-0 rounded-lg border border-blue-100 bg-white p-3 shadow-sm">
+                    <div className="mb-2 flex items-start justify-between gap-2">
+                      <span className="text-[11px] font-bold uppercase tracking-wide text-blue-700">Producto {index + 1}</span>
+                      <button type="button" onClick={() => setMaterials((current) => current.filter((_, materialIndex) => materialIndex !== index))} className="text-xs font-medium text-red-600 hover:text-red-800">Quitar</button>
+                    </div>
+                    <p className="truncate text-sm font-semibold text-slate-800" title={material.descripcion}>{material.descripcion}</p>
+                    <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
+                      <div><dt className="text-slate-400">SAP</dt><dd className="truncate font-medium text-slate-700">{material.codigoSAP}</dd></div>
+                      <div><dt className="text-slate-400">Lote</dt><dd className="truncate font-medium text-slate-700">{material.numeroLote}</dd></div>
+                      <div className="col-span-2"><dt className="text-slate-400">Vencimiento</dt><dd className="font-medium text-slate-700">{material.fechaVencimiento}</dd></div>
+                    </dl>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -1164,15 +1298,31 @@ export default function ActaCreatePage() {
                 <FieldError message={form3.formState.errors.cantidadUnidades?.message} />
               </div>
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Costo de destrucción (COP) *</label>
+                <div className="mb-1 flex items-center justify-between gap-2">
+                  <label className="block text-sm font-medium text-slate-700">Costo del material (COP)</label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const nextValue = !costoNoAplica;
+                      setCostoNoAplica(nextValue);
+                      form3.setValue("costoDestruccion", nextValue ? 0 : "", { shouldValidate: true, shouldDirty: true });
+                    }}
+                    className={`rounded-md border px-2.5 py-1 text-xs font-medium transition-colors ${costoNoAplica ? "border-amber-400 bg-amber-50 text-amber-800" : "border-slate-300 bg-white text-slate-600 hover:border-amber-400 hover:text-amber-700"}`}
+                  >
+                    {costoNoAplica ? "No aplica" : "Marcar no aplica"}
+                  </button>
+                </div>
                 <input
                   {...form3.register("costoDestruccion")}
                   type="text"
                   inputMode="numeric"
                   maxLength={13}
                   placeholder="0"
-                  className="w-full px-3 py-2.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  disabled={costoNoAplica}
+                  value={costoNoAplica ? "" : form3.watch("costoDestruccion") || ""}
+                  className="w-full px-3 py-2.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed"
                 />
+                {costoNoAplica && <p className="mt-1 text-xs text-slate-500">Se guardará como “No aplica” y tendrá valor interno 0.</p>}
                 <FieldError message={form3.formState.errors.costoDestruccion?.message} />
               </div>
             </div>
@@ -1303,19 +1453,28 @@ export default function ActaCreatePage() {
               <Row label="Área" value={String(formData.area || "")} />
             </Section>
             <Section title="Información del Material">
-              <Row label="Descripción" value={String(formData.descripcion || "")} />
-              <Row label="Código SAP" value={String(formData.codigoSAP || "")} />
-              <Row label="Clasificación" value={CLASIFICACION_LABELS[formData.clasificacion || "otro"]} />
-              <Row label="Número de Lote" value={String(formData.numeroLote || "")} />
-              <Row label="Orden de Producción" value={String(formData.ordenProduccion || "")} />
-              <Row label="Fecha Vencimiento" value={String(formData.fechaVencimiento || "")} />
-              <Row label="Registro INVIMA" value={String(formData.registroINVIMA || "")} />
-              <Row label="Sustancia Controlada" value={formData.sustanciaControlada ? "Sí" : "No"} />
+              <div className="col-span-2 space-y-3">
+                {materialSummary.map((material, index) => (
+                  <div key={`${material.codigoSAP}-${index}`} className="rounded-lg border border-slate-200 p-3">
+                    <p className="mb-2 text-sm font-semibold text-slate-800">Producto {index + 1}: {material.descripcion}</p>
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                      <Row label="Código SAP" value={material.codigoSAP} />
+                      <Row label="Tipo de material" value={material.tipoMaterial || "No especificado"} />
+                      <Row label="Clasificación" value={CLASIFICACION_LABELS[material.clasificacion]} />
+                      <Row label="Registro INVIMA" value={material.registroINVIMA} />
+                      <Row label="Número de Lote" value={material.numeroLote} />
+                      <Row label="Orden de Producción" value={material.ordenProduccion} />
+                      <Row label="Fecha Vencimiento" value={material.fechaVencimiento} />
+                      <Row label="Sustancia Controlada" value={material.sustanciaControlada ? "Sí" : "No"} />
+                    </div>
+                  </div>
+                ))}
+              </div>
             </Section>
             <Section title="Información Económica y de cantidad generada">
               <Row label="Peso (kg)" value={String(formData.pesoKg || 0)} />
               <Row label="Unidades" value={String(formData.cantidadUnidades || 0)} />
-              <Row label="Costo Destrucción" value={`COP ${Number(formData.costoDestruccion || 0).toLocaleString("es-CO")}`} />
+              <Row label="Costo del material" value={costoNoAplica ? "No aplica" : `COP ${Number(formData.costoDestruccion || 0).toLocaleString("es-CO")}`} />
             </Section>
             <Section title="Causal">
               <Row label="Causal" value={selectedCausal ? CAUSAL_LABELS[selectedCausal] : ""} />

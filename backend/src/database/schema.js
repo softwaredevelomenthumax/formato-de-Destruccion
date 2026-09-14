@@ -57,6 +57,26 @@ export async function initializeDatabase() {
         FOREIGN KEY (actaId) REFERENCES actas(id)
       );
 
+      IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'acta_materiales')
+      CREATE TABLE acta_materiales (
+        id NVARCHAR(50) PRIMARY KEY,
+        actaId NVARCHAR(50) NOT NULL,
+        descripcion NVARCHAR(MAX) NOT NULL,
+        tipoMaterial NVARCHAR(255),
+        codigoSAP NVARCHAR(100) NOT NULL,
+        numeroLote NVARCHAR(100) NOT NULL,
+        ordenProduccion NVARCHAR(100) NOT NULL,
+        sustanciaControlada BIT,
+        clasificacion NVARCHAR(100),
+        fechaVencimiento DATE,
+        registroINVIMA NVARCHAR(100),
+        estadoInvima NVARCHAR(50),
+        invimaProductId NVARCHAR(50),
+        sapCodeId NVARCHAR(50),
+        createdAt DATETIME DEFAULT GETDATE(),
+        FOREIGN KEY (actaId) REFERENCES actas(id)
+      );
+
       IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'acta_aprobaciones')
       CREATE TABLE acta_aprobaciones (
         id NVARCHAR(50) PRIMARY KEY,

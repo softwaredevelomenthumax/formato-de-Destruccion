@@ -181,7 +181,7 @@ export default function ReportsPage() {
       <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
         <div className="px-5 py-3 border-b border-slate-200 bg-slate-50">
           <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Dinero destruido por área</p>
-          <p className="text-xs text-slate-500 mt-1">Contador acumulado de costo de destrucción para los filtros seleccionados.</p>
+          <p className="text-xs text-slate-500 mt-1">Contador acumulado del costo del material para los filtros seleccionados.</p>
         </div>
         {byArea.length === 0 ? <p className="p-6 text-center text-sm text-slate-500">No hay costos registrados para mostrar.</p> : <div className="divide-y divide-slate-100">{byArea.map((item) => (
           <div key={item.area} className="flex items-center justify-between gap-4 px-5 py-3">

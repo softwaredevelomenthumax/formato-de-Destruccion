@@ -170,24 +170,38 @@ export default function ActaDetailPage() {
           </InfoCard>
 
           <InfoCard title="Información del Material">
-            <Grid2>
-              <Row label="Descripción" value={acta.descripcion} className="col-span-2" />
-              <Row label="Código SAP" value={acta.codigoSAP} />
-              <Row label="Tipo de material" value={acta.tipoMaterial || "No especificado"} />
-              <Row label="Registro INVIMA" value={acta.registroINVIMA} />
-              <Row label="Número de Lote" value={acta.numeroLote} />
-              <Row label="Orden de Producción" value={acta.ordenProduccion} />
-              <Row label="Clasificación" value={CLASIFICACION_LABELS[acta.clasificacion]} />
-              <Row label="Fecha Vencimiento" value={acta.fechaVencimiento} />
-              <Row label="Sustancia Controlada" value={acta.sustanciaControlada ? "Sí" : "No"} />
-            </Grid2>
+            {(acta.materiales?.length ? acta.materiales : [{
+              descripcion: acta.descripcion,
+              codigoSAP: acta.codigoSAP,
+              tipoMaterial: acta.tipoMaterial,
+              registroINVIMA: acta.registroINVIMA,
+              numeroLote: acta.numeroLote,
+              ordenProduccion: acta.ordenProduccion,
+              clasificacion: acta.clasificacion,
+              fechaVencimiento: acta.fechaVencimiento,
+              sustanciaControlada: acta.sustanciaControlada,
+            }]).map((material, index) => (
+              <div key={`${material.codigoSAP}-${index}`} className="border-b border-slate-100 pb-4 last:border-0 last:pb-0">
+                <p className="mb-2 text-sm font-semibold text-slate-800">Producto {index + 1}: {material.descripcion}</p>
+                <Grid2>
+                  <Row label="Código SAP" value={material.codigoSAP} />
+                  <Row label="Tipo de material" value={material.tipoMaterial || "No especificado"} />
+                  <Row label="Registro INVIMA" value={material.registroINVIMA} />
+                  <Row label="Número de Lote" value={material.numeroLote} />
+                  <Row label="Orden de Producción" value={material.ordenProduccion} />
+                  <Row label="Clasificación" value={CLASIFICACION_LABELS[material.clasificacion]} />
+                  <Row label="Fecha Vencimiento" value={material.fechaVencimiento} />
+                  <Row label="Sustancia Controlada" value={material.sustanciaControlada ? "Sí" : "No"} />
+                </Grid2>
+              </div>
+            ))}
           </InfoCard>
 
           <InfoCard title="Información Económica">
             <Grid2>
               <Row label="Peso (kg)" value={`${safePeso} kg`} />
               <Row label="Unidades" value={String(safeCantidad)} />
-              <Row label="Costo Destrucción" value={`COP ${safeCosto.toLocaleString("es-CO")}`} />
+              <Row label="Costo del material" value={safeCosto === 0 ? "No aplica" : `COP ${safeCosto.toLocaleString("es-CO")}`} />
               <Row label="Requiere Costos" value={acta.requiereCostos ? "Sí" : "No"} />
             </Grid2>
           </InfoCard>

@@ -9,20 +9,35 @@ interface StepperProps {
   steps: Step[];
   currentStep: number;
   completedSteps: number[];
+  maxStepReached?: number;
+  onStepClick?: (step: number) => void;
 }
 
-export function Stepper({ steps, currentStep, completedSteps }: StepperProps) {
+export function Stepper({ steps, currentStep, completedSteps, maxStepReached = currentStep, onStepClick }: StepperProps) {
   return (
     <div className="w-full">
-      <div className="flex items-center">
+      <div className="flex items-start">
         {steps.map((step, index) => {
           const isCompleted = completedSteps.includes(index);
           const isCurrent = currentStep === index;
-          const isUpcoming = !isCompleted && !isCurrent;
+          const canNavigate = index <= maxStepReached && !!onStepClick;
 
           return (
-            <div key={index} className="flex items-center flex-1 last:flex-none">
-              <div className="flex flex-col items-center">
+            <div key={index} className="relative flex min-w-0 flex-1 flex-col items-center">
+              {index < steps.length - 1 && (
+                <div
+                  className={`absolute left-1/2 top-4 z-0 h-0.5 w-full transition-all ${
+                    completedSteps.includes(index) ? "bg-blue-700" : "bg-slate-200"
+                  }`}
+                />
+              )}
+              <button
+                type="button"
+                onClick={() => canNavigate && onStepClick?.(index)}
+                disabled={!canNavigate}
+                aria-label={`Ir al paso ${index + 1}: ${step.label}`}
+                className={`relative z-10 flex flex-col items-center rounded-lg p-1 transition-colors ${canNavigate ? "cursor-pointer hover:bg-blue-50" : "cursor-not-allowed"}`}
+              >
                 <div
                   className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold transition-all ${
                     isCompleted
@@ -30,7 +45,7 @@ export function Stepper({ steps, currentStep, completedSteps }: StepperProps) {
                       : isCurrent
                       ? "bg-blue-700 text-white ring-4 ring-blue-100"
                       : "bg-slate-100 text-slate-400"
-                  }`}
+                  } ${canNavigate ? "cursor-pointer hover:bg-blue-800" : "cursor-not-allowed"}`}
                 >
                   {isCompleted ? <Check size={14} strokeWidth={2.5} /> : <span>{index + 1}</span>}
                 </div>
@@ -43,14 +58,7 @@ export function Stepper({ steps, currentStep, completedSteps }: StepperProps) {
                     {step.label}
                   </p>
                 </div>
-              </div>
-              {index < steps.length - 1 && (
-                <div
-                  className={`flex-1 h-0.5 mx-2 mt-[-16px] transition-all ${
-                    completedSteps.includes(index) ? "bg-blue-700" : "bg-slate-200"
-                  }`}
-                />
-              )}
+              </button>
             </div>
           );
         })}
