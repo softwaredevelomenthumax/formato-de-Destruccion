@@ -1240,30 +1240,54 @@ export default function ActaCreatePage() {
               </div>
             </div>
           </form>
-          {materials.length > 0 && (
-            <div className="mt-6 rounded-xl border border-slate-200 bg-slate-50 p-3">
+          <div className="mt-6 rounded-xl border border-slate-200 bg-slate-50 p-3">
               <div className="flex items-center justify-between">
                 <h3 className="text-sm font-semibold text-slate-700">Productos agregados</h3>
                 <span className="rounded-full bg-blue-100 px-2.5 py-1 text-xs font-semibold text-blue-700">{materials.length}</span>
               </div>
-              <div className="mt-3 flex gap-3 overflow-x-auto pb-1">
-                {materials.map((material, index) => (
-                  <div key={`${material.codigoSAP}-${index}`} className="w-64 shrink-0 rounded-lg border border-blue-100 bg-white p-3 shadow-sm">
-                    <div className="mb-2 flex items-start justify-between gap-2">
-                      <span className="text-[11px] font-bold uppercase tracking-wide text-blue-700">Producto {index + 1}</span>
-                      <button type="button" onClick={() => setMaterials((current) => current.filter((_, materialIndex) => materialIndex !== index))} className="text-xs font-medium text-red-600 hover:text-red-800">Quitar</button>
-                    </div>
-                    <p className="truncate text-sm font-semibold text-slate-800" title={material.descripcion}>{material.descripcion}</p>
-                    <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
-                      <div><dt className="text-slate-400">SAP</dt><dd className="truncate font-medium text-slate-700">{material.codigoSAP}</dd></div>
-                      <div><dt className="text-slate-400">Lote</dt><dd className="truncate font-medium text-slate-700">{material.numeroLote}</dd></div>
-                      <div className="col-span-2"><dt className="text-slate-400">Vencimiento</dt><dd className="font-medium text-slate-700">{material.fechaVencimiento}</dd></div>
-                    </dl>
-                  </div>
-                ))}
+              <div className="mt-3 overflow-x-auto rounded-lg border border-slate-200 bg-white">
+                <table className="min-w-[1260px] w-full text-sm">
+                  <thead className="border-b border-slate-200 bg-slate-100">
+                    <tr>
+                      <th className="px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">#</th>
+                      <th className="px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Descripción</th>
+                      <th className="px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">INVIMA</th>
+                      <th className="px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Código SAP</th>
+                      <th className="px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Tipo</th>
+                      <th className="px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Lote</th>
+                      <th className="px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Orden</th>
+                      <th className="px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Clasificación</th>
+                      <th className="px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Vencimiento</th>
+                      <th className="px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Controlado</th>
+                      <th className="px-3 py-2.5 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">Acción</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {materials.length === 0 ? (
+                      <tr>
+                        <td colSpan={11} className="px-3 py-5 text-center text-xs text-slate-500">Aún no hay productos agregados. Complete el formulario y pulse “+ Agregar producto”.</td>
+                      </tr>
+                    ) : materials.map((material, index) => (
+                        <tr key={`${material.codigoSAP}-${index}`} className="hover:bg-blue-50/50">
+                          <td className="px-3 py-2.5 font-medium text-slate-500">{index + 1}</td>
+                          <td className="max-w-[280px] truncate px-3 py-2.5 font-medium text-slate-800" title={material.descripcion}>{material.descripcion}</td>
+                          <td className="px-3 py-2.5 font-mono text-xs text-slate-700">{material.registroINVIMA}</td>
+                          <td className="px-3 py-2.5 font-mono text-xs text-slate-700">{material.codigoSAP}</td>
+                          <td className="px-3 py-2.5 text-slate-700">{material.tipoMaterial || "N/A"}</td>
+                          <td className="px-3 py-2.5 text-slate-700">{material.numeroLote}</td>
+                          <td className="px-3 py-2.5 text-slate-700">{material.ordenProduccion}</td>
+                          <td className="px-3 py-2.5 text-slate-700">{CLASIFICACION_LABELS[material.clasificacion] || material.clasificacion}</td>
+                          <td className="px-3 py-2.5 text-slate-700">{material.fechaVencimiento}</td>
+                          <td className="px-3 py-2.5 text-slate-700">{material.sustanciaControlada ? "Sí" : "No"}</td>
+                          <td className="px-3 py-2.5 text-right">
+                            <button type="button" onClick={() => setMaterials((current) => current.filter((_, materialIndex) => materialIndex !== index))} className="text-xs font-medium text-red-600 hover:text-red-800">Quitar</button>
+                          </td>
+                        </tr>
+                      ))}
+                  </tbody>
+                </table>
               </div>
             </div>
-          )}
         </div>
       )}
 
