@@ -100,9 +100,17 @@ async function seed() {
     // Cargar el maestro desde el Excel entregado por el usuario.
     const workbook = XLSX.readFile(path.resolve(process.cwd(), '../cecos.xlsx'));
     const rows = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]], { defval: '' });
+    const empresaAliases = {
+      COH1: { code: 'CO11', name: 'Humax' },
+      COF1: { code: 'CO12', name: 'Farmatech' },
+      COC1: { code: 'CO13', name: 'Cambridge' },
+      CO11: { code: 'CO11', name: 'Humax' },
+      CO12: { code: 'CO12', name: 'Farmatech' },
+      CO13: { code: 'CO13', name: 'Cambridge' },
+    };
     const cecos = rows.map((row) => ({
-      empresaCode: String(row.Empresa || '').trim(),
-      empresa: String(row.Empresa_1 || '').trim(),
+      empresaCode: empresaAliases[String(row.Empresa || '').trim().toUpperCase()]?.code || String(row.Empresa || '').trim(),
+      empresa: empresaAliases[String(row.Empresa || '').trim().toUpperCase()]?.name || String(row.Empresa_1 || '').trim(),
       ceco: String(row.Ceco || '').trim(),
       denominacion: String(row['Denominación'] || '').trim(),
       responsable: String(row.Responsable || '').trim(),
@@ -131,49 +139,6 @@ async function seed() {
           INSERT INTO cecos (id, empresaCode, empresa, ceco, denominacion, responsable, departamento, tipoCosto, moneda, status)
           VALUES (@id, @empresaCode, @empresa, @ceco, @denominacion, @responsable, @departamento, @tipoCosto, @moneda, @status)
         `);
-    }
-
-    const testProducts = [
-      ['ROH', 0, '001', 'Lactosa monohidrato', 'MP'], ['ROH', 0, '002', 'Celulosa microcristalina', 'MP'],
-      ['ROH', 1, '003', 'Codeína fosfato', 'MP'], ['ROH', 1, '004', 'Fenobarbital', 'MP'],
-      ['FERT', 0, '005', 'Tabletas de vitamina C 500 mg', 'PT'], ['FERT', 0, '006', 'Jarabe multivitamínico 120 mL', 'PT'],
-      ['FERT', 1, '007', 'Tabletas de clonazepam 2 mg', 'PT'], ['FERT', 1, '008', 'Solución oral de tramadol 100 mg', 'PT'],
-      ['HALB', 0, '009', 'Granulado de acetaminofén', 'ST'], ['HALB', 0, '010', 'Mezcla para cápsulas de omeprazol', 'ST'],
-      ['HALB', 1, '011', 'Granulado de codeína', 'ST'], ['HALB', 1, '012', 'Mezcla de morfina para ampollas', 'ST'],
-      ['ME', 0, '013', 'Frasco PET ámbar 120 mL', 'ME'], ['ME', 0, '014', 'Etiqueta autoadhesiva estándar', 'ME'],
-      ['ME', 1, '015', 'Etiqueta de seguridad para controlados', 'ME'], ['ME', 1, '016', 'Blíster de seguridad para controlados', 'ME'],
-      ['UNBW', 0, '017', 'Reactivo de pH 7.00', 'UNBW'], ['UNBW', 0, '018', 'Material de referencia de cafeína', 'UNBW'],
-      ['UNBW', 1, '019', 'Estándar de referencia de morfina', 'UNBW'], ['UNBW', 1, '020', 'Estándar de referencia de codeína', 'UNBW'],
-    ];
-
-    console.log(`\n💊 Cargando ${testProducts.length} productos INVIMA de prueba...`);
-    for (const [materialCode, controlado, sequence, productName, clase] of testProducts) {
-      const id = `inv-test-${sequence}`;
-      const registryNumber = `INV-PRUEBA-${sequence}`;
-      const sapCode = `SAP-PRUEBA-${sequence}`;
-      const empresa = 'Humax';
-      const empresaCode = 'CO11';
-      await pool.request().input('id', id).input('codigoMaterial', `${materialCode}-${sequence}`).input('codigo', sapCode)
-        .input('clase', clase).input('registryNumber', registryNumber).input('productName', productName)
-        .input('empresa', empresa).input('empresaCode', empresaCode).input('tipoMedicamento', clase)
-        .input('controlado', controlado).input('presentacion', productName).input('requiereSap', 1)
-        .query(`IF EXISTS (SELECT 1 FROM invima_products WHERE id = @id OR registryNumber = @registryNumber)
-          UPDATE invima_products SET codigoMaterial = @codigoMaterial, codigo = @codigo, clase = @clase, productName = @productName,
-            registryNumber = @registryNumber, tipoMedicamento = @tipoMedicamento, controlado = @controlado, presentacion = @presentacion,
-            empresaCode = @empresaCode, empresa = @empresa WHERE id = @id OR registryNumber = @registryNumber
-          ELSE
-          INSERT INTO invima_products (id, codigoMaterial, codigo, clase, productName, registryNumber, internalStatus, holder, tipoMedicamento, controlado, presentacion, empresaCode, empresa, requiereSap, requiereInvima)
-          VALUES (@id, @codigoMaterial, @codigo, @clase, @productName, @registryNumber, '', @empresa, @tipoMedicamento, @controlado, @presentacion, @empresaCode, @empresa, @requiereSap, 1)`);
-      await pool.request().input('id', `sap-test-${sequence}`).input('codigo', sapCode)
-        .input('descripcion', productName).input('empresaCode', empresaCode).input('empresa', empresa)
-        .input('invimaProductId', id).input('presentacion', productName).input('unidadMedida', 'UND')
-        .query(`IF EXISTS (SELECT 1 FROM sap_codes WHERE id = @id OR (codigo = @codigo AND empresaCode = @empresaCode))
-          UPDATE sap_codes SET codigo = @codigo, descripcion = @descripcion, empresaCode = @empresaCode, empresa = @empresa,
-            invimaProductId = @invimaProductId, presentacion = @presentacion, unidadMedida = @unidadMedida
-            WHERE id = @id OR (codigo = @codigo AND empresaCode = @empresaCode)
-          ELSE
-          INSERT INTO sap_codes (id, codigo, descripcion, empresaCode, empresa, invimaProductId, presentacion, unidadMedida, status)
-          VALUES (@id, @codigo, @descripcion, @empresaCode, @empresa, @invimaProductId, @presentacion, @unidadMedida, 'Activo')`);
     }
 
     console.log('\n✅ Base de datos lista para usar\n');

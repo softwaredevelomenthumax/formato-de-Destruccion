@@ -95,6 +95,15 @@ export interface InvimaProduct {
   empresa?: Empresa;
   requiereSap?: boolean;
   requiereInvima?: boolean;
+  unidadMedidaBase?: string;
+  precioEstandar?: number;
+  densidad?: number;
+  pesoUnidad?: number;
+  centro?: string;
+  pbNivelCentro?: string;
+  statusMaterialTodosCentros?: string;
+  statusMaterialCentro?: string;
+  planifNecesidades?: string;
 }
 
 export interface SapCode {

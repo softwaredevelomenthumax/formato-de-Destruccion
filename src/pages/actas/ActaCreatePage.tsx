@@ -14,7 +14,7 @@ import { Modal } from "../../components/ui/Modal";
 import {
   CLASIFICACION_LABELS, CAUSAL_LABELS, CAUSAL_DESCRIPTIONS, EMPRESAS, AREAS
 } from "../../constants";
-import type { ActaMaterial, CausalDestruccion, Ceco, Empresa, InvimaProduct, SapCode } from "../../types";
+import type { ActaMaterial, CausalDestruccion, Ceco, Empresa, InvimaProduct } from "../../types";
 import { api } from "../../services/api.ts";
 import { toast } from "sonner";
 
@@ -347,7 +347,7 @@ export default function ActaCreatePage() {
   const [invimaSearch, setInvimaSearch] = useState("");
   const [showInvimaDropdown, setShowInvimaDropdown] = useState(false);
   const [showInvimaModal, setShowInvimaModal] = useState(false);
-  const [sapCodes, setSapCodes] = useState<SapCode[]>([]);
+  const [sapCodes, setSapCodes] = useState<InvimaProduct[]>([]);
   const [sapSearch, setSapSearch] = useState("");
   const [showSapModal, setShowSapModal] = useState(false);
   const [showMaterialTypeModal, setShowMaterialTypeModal] = useState(false);
@@ -595,18 +595,13 @@ export default function ActaCreatePage() {
     setInvimaSearch(product.registryNumber);
     setShowInvimaDropdown(false);
     setShowInvimaModal(false);
-    const codes = await api.getSapCodes(`empresaCode=${encodeURIComponent(product.empresaCode || "")}&invimaProductId=${encodeURIComponent(product.id)}`);
-    setSapCodes(Array.isArray(codes) ? codes as SapCode[] : []);
-    if (Array.isArray(codes) && codes.length === 1) {
-      form2.setValue("codigoSAP", codes[0].codigo, { shouldValidate: true });
-      form2.setValue("sapCodeId", codes[0].id);
-    }
+    setSapCodes([product]);
+    form2.setValue("sapCodeId", undefined, { shouldDirty: true });
   };
 
   const filteredSapCodes = sapCodes.filter((sap) => {
     const query = sapSearch.toLowerCase().trim();
-    const material = invimaProducts.find((product) => product.id === sap.invimaProductId || product.codigo === sap.codigo);
-    return (!material || material.controlado === form2.watch("sustanciaControlada")) && (!query || [sap.codigo, sap.descripcion || "", sap.presentacion || ""].some((value) => value.toLowerCase().includes(query)));
+    return sap.controlado === form2.watch("sustanciaControlada") && (!query || [sap.codigo, sap.productName, sap.presentacion || ""].some((value) => (value || "").toLowerCase().includes(query)));
   });
 
   const selectedMasterMaterial = invimaProducts.find((product) =>
@@ -631,24 +626,20 @@ export default function ActaCreatePage() {
     form2.setValue("descripcion", "", { shouldDirty: true });
   };
 
-  const selectSap = (sap: SapCode) => {
+  const selectSap = (sap: InvimaProduct) => {
     form2.setValue("codigoSAP", sap.codigo, { shouldValidate: true });
-    form2.setValue("sapCodeId", sap.id);
-    const material = invimaProducts.find((product) => product.id === sap.invimaProductId || product.codigo === sap.codigo);
-    if (material) {
-      form2.setValue("invimaProductId", material.id);
-      form2.setValue("registroINVIMA", material.registryNumber || "N/A");
-      form2.setValue("tipoMaterial", getMaterialTypeCode(material), { shouldDirty: true });
-      form2.setValue("descripcion", material.productName);
-      const masterType = (material.clase || "").toUpperCase();
+    form2.setValue("invimaProductId", sap.id);
+    form2.setValue("registroINVIMA", sap.registryNumber || "N/A");
+    form2.setValue("tipoMaterial", getMaterialTypeCode(sap), { shouldDirty: true });
+    form2.setValue("descripcion", sap.productName);
+    {
+      const masterType = (sap.clase || "").toUpperCase();
       const classification = masterType.includes("ROH") || masterType.includes("MP") ? "MP"
         : masterType.includes("FERT") || masterType.includes("PT") ? "PT"
         : masterType.includes("HALB") || masterType.includes("ST") ? "ST"
         : masterType.includes("UNBW") ? "reactivos"
         : masterType === "ME" ? "ME" : undefined;
       if (classification) form2.setValue("clasificacion", classification as Step2Data["clasificacion"], { shouldValidate: true, shouldDirty: true });
-    } else if (sap.descripcion) {
-      form2.setValue("descripcion", sap.descripcion);
     }
     setShowSapModal(false);
   };
@@ -1170,9 +1161,9 @@ export default function ActaCreatePage() {
               <tbody className="divide-y divide-slate-100">
                 {filteredSapCodes.map((sap) => <tr key={sap.id} onClick={() => selectSap(sap)} className="cursor-pointer hover:bg-blue-50">
                   <td className="px-4 py-3 font-mono text-xs font-semibold text-blue-700">{sap.codigo}</td>
-                  <td className="px-4 py-3 text-slate-800">{sap.descripcion}</td>
-                  <td className="px-4 py-3 text-slate-600">{sap.presentacion}</td>
-                  <td className="px-4 py-3 text-xs text-slate-500">{sap.unidadMedida}</td>
+                  <td className="px-4 py-3 text-slate-800">{sap.productName}</td>
+                  <td className="px-4 py-3 text-slate-600">{sap.presentacion || "—"}</td>
+                  <td className="px-4 py-3 text-xs text-slate-500">{sap.unidadMedidaBase || "—"}</td>
                 </tr>)}
               </tbody>
             </table>
@@ -1295,7 +1286,7 @@ export default function ActaCreatePage() {
                 <div className="flex flex-col gap-2 sm:flex-row">
                   <input {...form2.register("codigoSAP", { onBlur: (event) => autoSelectMaterial(event.target.value) })} placeholder="Ingrese únicamente el código SAP" className="min-w-0 flex-1 px-3 py-2.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
                   <div className="flex gap-2">
-                    <button type="button" onClick={async () => { const codes = await api.getSapCodes(`empresaCode=${encodeURIComponent(empresaWatch === "Humax" ? "CO11" : empresaWatch === "Farmatech" ? "CO12" : "CO13")}`); setSapCodes(Array.isArray(codes) ? codes as SapCode[] : []); setShowSapModal(true); }} className="flex flex-1 items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm font-medium text-slate-700 hover:border-blue-500 hover:text-blue-700 sm:flex-none" title="Buscar cualquier código SAP"><Search size={16} /> Buscar</button>
+                    <button type="button" onClick={() => { setSapCodes(invimaProducts.filter((product) => (!product.empresa || product.empresa === empresaWatch) && product.controlado === form2.watch("sustanciaControlada"))); setShowSapModal(true); }} className="flex flex-1 items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm font-medium text-slate-700 hover:border-blue-500 hover:text-blue-700 sm:flex-none" title="Buscar cualquier código SAP del maestro unificado"><Search size={16} /> Buscar</button>
                     <button type="button" onClick={setSapNotApplicable} className={`flex-1 rounded-lg border px-3 py-2.5 text-sm font-medium sm:flex-none ${sapNotApplicable ? "border-amber-500 bg-amber-50 text-amber-800" : "border-slate-300 bg-white text-slate-700 hover:border-amber-500 hover:text-amber-700"}`}>No aplica</button>
                   </div>
                 </div>

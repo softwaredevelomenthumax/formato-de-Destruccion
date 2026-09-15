@@ -130,6 +130,15 @@ export async function initializeDatabase() {
         empresa NVARCHAR(100),
         requiereSap BIT DEFAULT 1,
         requiereInvima BIT DEFAULT 1,
+        unidadMedidaBase NVARCHAR(50),
+        precioEstandar DECIMAL(18, 4),
+        densidad DECIMAL(18, 6),
+        pesoUnidad DECIMAL(18, 6),
+        centro NVARCHAR(20),
+        pbNivelCentro NVARCHAR(100),
+        statusMaterialTodosCentros NVARCHAR(100),
+        statusMaterialCentro NVARCHAR(100),
+        planifNecesidades NVARCHAR(100),
         createdAt DATETIME DEFAULT GETDATE()
       );
 
@@ -201,6 +210,15 @@ export async function initializeDatabase() {
       IF COL_LENGTH('invima_products', 'canal') IS NULL ALTER TABLE invima_products ADD canal NVARCHAR(100);
       IF COL_LENGTH('invima_products', 'estadoInvima') IS NULL ALTER TABLE invima_products ADD estadoInvima NVARCHAR(50);
       IF COL_LENGTH('invima_products', 'codigoMaterial') IS NULL ALTER TABLE invima_products ADD codigoMaterial NVARCHAR(100);
+      IF COL_LENGTH('invima_products', 'unidadMedidaBase') IS NULL ALTER TABLE invima_products ADD unidadMedidaBase NVARCHAR(50);
+      IF COL_LENGTH('invima_products', 'precioEstandar') IS NULL ALTER TABLE invima_products ADD precioEstandar DECIMAL(18, 4);
+      IF COL_LENGTH('invima_products', 'densidad') IS NULL ALTER TABLE invima_products ADD densidad DECIMAL(18, 6);
+      IF COL_LENGTH('invima_products', 'pesoUnidad') IS NULL ALTER TABLE invima_products ADD pesoUnidad DECIMAL(18, 6);
+      IF COL_LENGTH('invima_products', 'centro') IS NULL ALTER TABLE invima_products ADD centro NVARCHAR(20);
+      IF COL_LENGTH('invima_products', 'pbNivelCentro') IS NULL ALTER TABLE invima_products ADD pbNivelCentro NVARCHAR(100);
+      IF COL_LENGTH('invima_products', 'statusMaterialTodosCentros') IS NULL ALTER TABLE invima_products ADD statusMaterialTodosCentros NVARCHAR(100);
+      IF COL_LENGTH('invima_products', 'statusMaterialCentro') IS NULL ALTER TABLE invima_products ADD statusMaterialCentro NVARCHAR(100);
+      IF COL_LENGTH('invima_products', 'planifNecesidades') IS NULL ALTER TABLE invima_products ADD planifNecesidades NVARCHAR(100);
       IF COL_LENGTH('actas', 'cecoId') IS NULL ALTER TABLE actas ADD cecoId NVARCHAR(50);
       IF COL_LENGTH('actas', 'invimaProductId') IS NULL ALTER TABLE actas ADD invimaProductId NVARCHAR(50);
       IF COL_LENGTH('actas', 'sapCodeId') IS NULL ALTER TABLE actas ADD sapCodeId NVARCHAR(50);

@@ -12,7 +12,6 @@ import notificationsRoutes from './routes/notifications.js';
 import solicitudesRoutes from './routes/solicitudes.js';
 import invimaRoutes from './routes/invima.js';
 import cecosRoutes from './routes/cecos.js';
-import sapRoutes from './routes/sap.js';
 
 const app = express();
 const PORT = process.env.PORT || 3004;
@@ -75,7 +74,6 @@ app.use('/api/notifications', notificationsRoutes);
 app.use('/api/solicitudes', solicitudesRoutes);
 app.use('/api/invima', invimaRoutes);
 app.use('/api/cecos', cecosRoutes);
-app.use('/api/sap', sapRoutes);
 
 // Error handling
 app.use((err, req, res, next) => {

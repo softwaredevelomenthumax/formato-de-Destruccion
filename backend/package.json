@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "node --watch src/server.js",
     "start": "node src/server.js",
-    "setup-db": "node src/seed.js"
+    "setup-db": "node src/seed.js",
+    "import-zmm059": "node src/importZmm059.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
