@@ -56,10 +56,14 @@ async function insertActaMaterial(pool, actaId, material, index) {
     .input('estadoInvima', material.estadoInvima)
     .input('invimaProductId', material.invimaProductId)
     .input('sapCodeId', material.sapCodeId)
+    .input('pesoKg', material.pesoKg)
+    .input('cantidadUnidades', material.cantidadUnidades)
+    .input('costoUnitario', material.costoUnitario)
+    .input('costoTotal', material.costoTotal)
     .query(`
       INSERT INTO acta_materiales
-      (id, actaId, descripcion, tipoMaterial, codigoSAP, numeroLote, ordenProduccion, sustanciaControlada, clasificacion, fechaVencimiento, registroINVIMA, estadoInvima, invimaProductId, sapCodeId)
-      VALUES (@id, @actaId, @descripcion, @tipoMaterial, @codigoSAP, @numeroLote, @ordenProduccion, @sustanciaControlada, @clasificacion, @fechaVencimiento, @registroINVIMA, @estadoInvima, @invimaProductId, @sapCodeId)
+      (id, actaId, descripcion, tipoMaterial, codigoSAP, numeroLote, ordenProduccion, sustanciaControlada, clasificacion, fechaVencimiento, registroINVIMA, estadoInvima, invimaProductId, sapCodeId, pesoKg, cantidadUnidades, costoUnitario, costoTotal)
+      VALUES (@id, @actaId, @descripcion, @tipoMaterial, @codigoSAP, @numeroLote, @ordenProduccion, @sustanciaControlada, @clasificacion, @fechaVencimiento, @registroINVIMA, @estadoInvima, @invimaProductId, @sapCodeId, @pesoKg, @cantidadUnidades, @costoUnitario, @costoTotal)
     `);
 }
 

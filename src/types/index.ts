@@ -200,6 +200,10 @@ export interface ActaMaterial {
   estadoInvima?: "Vigente" | "Vencido" | "Cancelado" | "N/A";
   invimaProductId?: string;
   sapCodeId?: string;
+  pesoKg?: number;
+  cantidadUnidades?: number;
+  costoUnitario?: number;
+  costoTotal?: number;
 }
 
 export interface Notification {

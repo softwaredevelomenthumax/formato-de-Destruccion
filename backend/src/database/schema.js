@@ -73,6 +73,10 @@ export async function initializeDatabase() {
         estadoInvima NVARCHAR(50),
         invimaProductId NVARCHAR(50),
         sapCodeId NVARCHAR(50),
+        pesoKg FLOAT,
+        cantidadUnidades FLOAT,
+        costoUnitario FLOAT,
+        costoTotal FLOAT,
         createdAt DATETIME DEFAULT GETDATE(),
         FOREIGN KEY (actaId) REFERENCES actas(id)
       );
@@ -227,6 +231,10 @@ export async function initializeDatabase() {
       IF COL_LENGTH('actas', 'cecoId') IS NULL ALTER TABLE actas ADD cecoId NVARCHAR(50);
       IF COL_LENGTH('actas', 'invimaProductId') IS NULL ALTER TABLE actas ADD invimaProductId NVARCHAR(50);
       IF COL_LENGTH('actas', 'sapCodeId') IS NULL ALTER TABLE actas ADD sapCodeId NVARCHAR(50);
+      IF COL_LENGTH('acta_materiales', 'pesoKg') IS NULL ALTER TABLE acta_materiales ADD pesoKg FLOAT;
+      IF COL_LENGTH('acta_materiales', 'cantidadUnidades') IS NULL ALTER TABLE acta_materiales ADD cantidadUnidades FLOAT;
+      IF COL_LENGTH('acta_materiales', 'costoUnitario') IS NULL ALTER TABLE acta_materiales ADD costoUnitario FLOAT;
+      IF COL_LENGTH('acta_materiales', 'costoTotal') IS NULL ALTER TABLE acta_materiales ADD costoTotal FLOAT;
 
       IF COL_LENGTH('cecos', 'id') IS NULL ALTER TABLE cecos ADD id NVARCHAR(50) NULL;
       IF EXISTS (SELECT 1 FROM sys.tables WHERE name = 'cecos')

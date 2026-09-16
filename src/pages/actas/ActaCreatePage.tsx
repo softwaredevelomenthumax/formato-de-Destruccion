@@ -384,6 +384,7 @@ export default function ActaCreatePage() {
   const [showMaterialTypeModal, setShowMaterialTypeModal] = useState(false);
   const [showMoreProductsModal, setShowMoreProductsModal] = useState(false);
   const [showMaterialWarningModal, setShowMaterialWarningModal] = useState(false);
+  const [materialNotice, setMaterialNotice] = useState("");
   const [materials, setMaterials] = useState<ActaMaterial[]>([]);
   const [costoNoAplica, setCostoNoAplica] = useState(false);
   const [maxStepReached, setMaxStepReached] = useState(0);
@@ -731,21 +732,21 @@ export default function ActaCreatePage() {
     );
 
   const continueFromMaterialStep = () => {
+    setMaterialNotice("");
     const currentMaterial = form2.getValues();
-    const hasCompleteCurrentMaterial = hasCompleteMaterial(currentMaterial);
-
-    if (materials.length === 0 && !hasCompleteCurrentMaterial) {
-      form2.clearErrors();
-      setShowMaterialWarningModal(true);
+    if (!hasCompleteMaterial(currentMaterial)) {
+      if (materials.length > 0) {
+        setFormData((previous) => ({ ...previous, ...materials[0] }));
+        setCurrentStep(4);
+        return;
+      }
+      setMaterialNotice(materials.length > 0
+        ? "Finalice el producto actual o déjelo vacío para continuar con los productos ya agregados."
+        : "Complete la información del material antes de continuar.");
       return;
     }
-
-    if (materials.length > 0 && !hasCompleteCurrentMaterial) {
-      setShowMoreProductsModal(true);
-      return;
-    }
-
-    void onStep2();
+    setFormData((previous) => ({ ...previous, ...currentMaterial }));
+    setCurrentStep(3);
   };
 
   const continueWithSavedProducts = () => {
@@ -758,22 +759,14 @@ export default function ActaCreatePage() {
   };
 
   const handleAddProduct = () => {
-    const currentMaterial = form2.getValues();
-    if (materials.length === 0 && !hasCompleteMaterial(currentMaterial)) {
-      form2.clearErrors();
-      setShowMaterialWarningModal(true);
+    if (materials.length > 0 && !hasCompleteMaterial(form2.getValues())) {
+      setMaterialNotice("El formulario está listo para agregar otro producto. Diligencie sus datos y pulse este botón.");
       return;
     }
-
-    if (materials.length > 0 && !hasCompleteMaterial(currentMaterial)) {
-      setShowMoreProductsModal(true);
-      return;
-    }
-
-    void form2.handleSubmit(addMaterial)();
+    continueFromMaterialStep();
   };
 
-  const materialFromData = (data: Step2Data): ActaMaterial => ({
+  const materialFromData = (data: Step2Data, economicData?: Step3Data): ActaMaterial => ({
     descripcion: data.descripcion,
     tipoMaterial: data.tipoMaterial,
     codigoSAP: data.codigoSAP,
@@ -786,6 +779,10 @@ export default function ActaCreatePage() {
     estadoInvima: data.estadoInvima,
     invimaProductId: data.invimaProductId,
     sapCodeId: data.sapCodeId,
+    pesoKg: economicData?.pesoKg,
+    cantidadUnidades: economicData?.cantidadUnidades,
+    costoUnitario: economicData?.costoDestruccion,
+    costoTotal: economicData ? Number(economicData.cantidadUnidades) * Number(economicData.costoDestruccion) : undefined,
   });
 
   const materialsForSave = (current: Partial<Step2Data>) => {
@@ -802,8 +799,16 @@ export default function ActaCreatePage() {
     return isAlreadyAdded ? materials : [...materials, currentMaterial];
   };
 
-  const addMaterial = (data: Step2Data) => {
-    setMaterials((current) => [...current, materialFromData(data)]);
+  const addMaterial = (data: Step2Data, economicData: Step3Data) => {
+    const newMaterial = materialFromData(data, economicData);
+    setMaterials((current) => [...current, newMaterial]);
+    setFormData((previous) => ({
+      ...previous,
+      ...data,
+      pesoKg: economicData.pesoKg,
+      cantidadUnidades: economicData.cantidadUnidades,
+      costoDestruccion: economicData.costoDestruccion,
+    }));
     form2.reset({
       descripcion: "",
       codigoSAP: "",
@@ -818,15 +823,22 @@ export default function ActaCreatePage() {
       invimaProductId: undefined,
       sapCodeId: undefined,
     });
+    form3.reset({ pesoKg: 0, cantidadUnidades: 0, costoDestruccion: 0 });
+    setCostoNoAplica(false);
     setInvimaSearch("");
     setSapCodes([]);
-    toast.success("Producto agregado al acta. Ahora diligencie el siguiente.");
+    setMaterialNotice("Producto finalizado y agregado. Puede agregar otro producto o continuar.");
+    setCurrentStep(2);
+  };
+
+  const finalizeCurrentMaterial = (economicData: Step3Data) => {
+    const currentMaterial = form2.getValues();
+    addMaterial(currentMaterial as Step2Data, economicData);
   };
 
   const onStep3 = form3.handleSubmit((data) => {
-    setFormData((prev) => ({ ...prev, ...data }));
-    setCompletedSteps((prev) => [...new Set([...prev, 3])]);
-    setCurrentStep(4);
+    finalizeCurrentMaterial(data);
+    setCompletedSteps((prev) => [...new Set([...prev, 2, 3])]);
   });
 
   const onCausalConfirm = () => {
@@ -845,6 +857,11 @@ export default function ActaCreatePage() {
     try {
       const data = { ...formData } as any;
       const materialItems = materialsForSave(data as Step2Data);
+      const economicTotals = materialItems.reduce((totals, material) => ({
+        pesoKg: totals.pesoKg + Number(material.pesoKg || 0),
+        cantidadUnidades: totals.cantidadUnidades + Number(material.cantidadUnidades || 0),
+        costoDestruccion: totals.costoDestruccion + Number(material.costoTotal ?? (Number(material.cantidadUnidades || 0) * Number(material.costoUnitario || 0))),
+      }), { pesoKg: 0, cantidadUnidades: 0, costoDestruccion: 0 });
       if (editingActa) {
         await updateActa(editingActa.id, {
           descripcion: data.descripcion || "",
@@ -859,9 +876,7 @@ export default function ActaCreatePage() {
           estadoInvima: data.estadoInvima || "N/A",
           invimaProductId: data.invimaProductId,
           sapCodeId: data.sapCodeId,
-          pesoKg: data.pesoKg || 0,
-          cantidadUnidades: data.cantidadUnidades || 0,
-          costoDestruccion: data.costoDestruccion || 0,
+          ...economicTotals,
           causal: selectedCausal,
           otraCausal: otraCausal || undefined,
           observaciones,
@@ -896,9 +911,7 @@ export default function ActaCreatePage() {
       estadoInvima: data.estadoInvima || "N/A",
       invimaProductId: data.invimaProductId,
       sapCodeId: data.sapCodeId,
-      pesoKg: data.pesoKg || 0,
-      cantidadUnidades: data.cantidadUnidades || 0,
-      costoDestruccion: data.costoDestruccion || 0,
+      ...economicTotals,
       causal: selectedCausal,
       otraCausal: otraCausal || undefined,
       observaciones,
@@ -918,6 +931,11 @@ export default function ActaCreatePage() {
     try {
       const data = { ...formData } as any;
       const materialItems = materialsForSave(data as Step2Data);
+      const economicTotals = materialItems.reduce((totals, material) => ({
+        pesoKg: totals.pesoKg + Number(material.pesoKg || 0),
+        cantidadUnidades: totals.cantidadUnidades + Number(material.cantidadUnidades || 0),
+        costoDestruccion: totals.costoDestruccion + Number(material.costoTotal ?? (Number(material.cantidadUnidades || 0) * Number(material.costoUnitario || 0))),
+      }), { pesoKg: 0, cantidadUnidades: 0, costoDestruccion: 0 });
       if (editingActa) {
         await updateActa(editingActa.id, {
           descripcion: data.descripcion || "",
@@ -932,9 +950,7 @@ export default function ActaCreatePage() {
           estadoInvima: data.estadoInvima || "N/A",
           invimaProductId: data.invimaProductId,
           sapCodeId: data.sapCodeId,
-          pesoKg: data.pesoKg || 0,
-          cantidadUnidades: data.cantidadUnidades || 0,
-          costoDestruccion: data.costoDestruccion || 0,
+          ...economicTotals,
           causal: selectedCausal,
           otraCausal: otraCausal || undefined,
           observaciones,
@@ -969,9 +985,7 @@ export default function ActaCreatePage() {
       estadoInvima: data.estadoInvima || "N/A",
       invimaProductId: data.invimaProductId,
       sapCodeId: data.sapCodeId,
-      pesoKg: data.pesoKg || 0,
-      cantidadUnidades: data.cantidadUnidades || 0,
-      costoDestruccion: data.costoDestruccion || 0,
+      ...economicTotals,
       causal: selectedCausal,
       otraCausal: otraCausal || undefined,
       observaciones,
@@ -999,6 +1013,11 @@ export default function ActaCreatePage() {
   const materialSummary = formData.descripcion
     ? materialsForSave(formData as Step2Data)
     : materials;
+  const economicSummary = materialSummary.reduce((totals, material) => ({
+    pesoKg: totals.pesoKg + Number(material.pesoKg || 0),
+    cantidadUnidades: totals.cantidadUnidades + Number(material.cantidadUnidades || 0),
+    costoTotal: totals.costoTotal + Number(material.costoTotal ?? (Number(material.cantidadUnidades || 0) * Number(material.costoUnitario || 0))),
+  }), { pesoKg: 0, cantidadUnidades: 0, costoTotal: 0 });
 
   return (
     <div className="max-w-3xl mx-auto space-y-6">
@@ -1299,6 +1318,11 @@ export default function ActaCreatePage() {
         <div className="bg-white rounded-xl border border-slate-200 p-6">
           <h2 className="text-base font-semibold text-slate-800 mb-5">Paso 3 — Información del Material</h2>
           <form onSubmit={(event) => { event.preventDefault(); continueFromMaterialStep(); }} noValidate className="space-y-4">
+            {materialNotice && (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm text-amber-800" role="status">
+                {materialNotice}
+              </div>
+            )}
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">Código INVIMA *</label>
               <div className="flex flex-col gap-2 sm:flex-row">
@@ -1415,13 +1439,16 @@ export default function ActaCreatePage() {
                       <th className="px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Clasificación</th>
                       <th className="px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Vencimiento</th>
                       <th className="px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Controlado</th>
+                      <th className="px-3 py-2.5 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">Unidades</th>
+                      <th className="px-3 py-2.5 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">Precio unitario</th>
+                      <th className="px-3 py-2.5 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">Total</th>
                       <th className="px-3 py-2.5 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">Acción</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     {materials.length === 0 ? (
                       <tr>
-                        <td colSpan={11} className="px-3 py-5 text-center text-xs text-slate-500">Puede continuar con un solo producto pulsando “Siguiente”. Use “Agregar otro producto” únicamente si necesita incluir más.</td>
+                        <td colSpan={14} className="px-3 py-5 text-center text-xs text-slate-500">Complete un producto y pulse “Siguiente” para ingresar su información económica.</td>
                       </tr>
                     ) : materials.map((material, index) => (
                         <tr key={`${material.codigoSAP}-${index}`} className="hover:bg-blue-50/50">
@@ -1435,6 +1462,9 @@ export default function ActaCreatePage() {
                           <td className="px-3 py-2.5 text-slate-700">{CLASIFICACION_LABELS[material.clasificacion] || material.clasificacion}</td>
                           <td className="px-3 py-2.5 text-slate-700">{material.fechaVencimiento}</td>
                           <td className="px-3 py-2.5 text-slate-700">{material.sustanciaControlada ? "Sí" : "No"}</td>
+                          <td className="px-3 py-2.5 text-right text-slate-700">{material.cantidadUnidades ?? "—"}</td>
+                          <td className="px-3 py-2.5 text-right text-slate-700">{material.costoUnitario == null ? "—" : `COP ${Number(material.costoUnitario).toLocaleString("es-CO")}`}</td>
+                          <td className="px-3 py-2.5 text-right font-semibold text-slate-700">{material.costoTotal == null ? "—" : `COP ${Number(material.costoTotal).toLocaleString("es-CO")}`}</td>
                           <td className="px-3 py-2.5 text-right">
                             <button type="button" onClick={() => setMaterials((current) => current.filter((_, materialIndex) => materialIndex !== index))} className="text-xs font-medium text-red-600 hover:text-red-800">Quitar</button>
                           </td>
@@ -1450,7 +1480,8 @@ export default function ActaCreatePage() {
       {/* Step 3: Economic Info */}
       {currentStep === 3 && (
         <div className="bg-white rounded-xl border border-slate-200 p-6">
-          <h2 className="text-base font-semibold text-slate-800 mb-5">Paso 4 — Información Económica y de cantidad generada</h2>
+          <h2 className="text-base font-semibold text-slate-800 mb-2">Información económica del producto</h2>
+          <p className="mb-5 text-sm text-slate-500">Producto: <span className="font-semibold text-slate-700">{form2.watch("descripcion") || "Sin descripción"}</span></p>
           <form onSubmit={onStep3} noValidate className="space-y-4">
             <div className="grid grid-cols-1 items-start gap-4 sm:grid-cols-3">
               <div className="flex min-w-0 flex-col">
@@ -1479,7 +1510,7 @@ export default function ActaCreatePage() {
               </div>
               <div className="flex min-w-0 flex-col">
                 <div className="mb-1 flex h-10 items-start gap-2">
-                  <label className="min-w-0 flex-1 text-sm font-medium leading-tight text-slate-700">Costo del material (COP)</label>
+                  <label className="min-w-0 flex-1 text-sm font-medium leading-tight text-slate-700">Precio unitario (COP)</label>
                   <button
                     type="button"
                     onClick={() => {
@@ -1506,9 +1537,18 @@ export default function ActaCreatePage() {
                 <FieldError message={form3.formState.errors.costoDestruccion?.message} />
               </div>
             </div>
+            <div className="rounded-lg border border-blue-100 bg-blue-50 px-4 py-3">
+              <div className="flex items-center justify-between gap-4">
+                <span className="text-sm font-medium text-blue-900">Total del material a destruir</span>
+                <span className="text-lg font-bold text-blue-900">
+                  {costoNoAplica ? "No aplica" : `COP ${(Number(form3.watch("cantidadUnidades") || 0) * Number(form3.watch("costoDestruccion") || 0)).toLocaleString("es-CO")}`}
+                </span>
+              </div>
+              <p className="mt-1 text-xs text-blue-700">Cantidad × precio unitario</p>
+            </div>
             <div className="flex justify-between pt-2">
-              <button type="button" onClick={() => setCurrentStep(2)} className="h-11 min-w-[140px] px-4 py-2.5 text-sm text-slate-700 font-medium bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors">← Anterior</button>
-              <button type="submit" className="h-11 min-w-[140px] px-5 py-2.5 rounded-lg text-sm font-medium bg-blue-700 text-white hover:bg-blue-800 transition-colors">Siguiente →</button>
+              <button type="button" onClick={() => setCurrentStep(2)} className="h-11 min-w-[140px] px-4 py-2.5 text-sm text-slate-700 font-medium bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors">← Volver al material</button>
+              <button type="submit" className="h-11 min-w-[190px] px-5 py-2.5 rounded-lg text-sm font-medium bg-blue-700 text-white hover:bg-blue-800 transition-colors">Finalizar producto</button>
             </div>
           </form>
         </div>
@@ -1646,15 +1686,19 @@ export default function ActaCreatePage() {
                       <Row label="Orden de Producción" value={material.ordenProduccion} />
                       <Row label="Fecha Vencimiento" value={material.fechaVencimiento} />
                       <Row label="Sustancia Controlada" value={material.sustanciaControlada ? "Sí" : "No"} />
+                      <Row label="Peso (kg)" value={String(material.pesoKg ?? "—")} />
+                      <Row label="Unidades" value={String(material.cantidadUnidades ?? "—")} />
+                      <Row label="Precio unitario" value={material.costoUnitario == null ? "—" : `COP ${Number(material.costoUnitario).toLocaleString("es-CO")}`} />
+                      <Row label="Total del material" value={material.costoTotal == null ? "—" : `COP ${Number(material.costoTotal).toLocaleString("es-CO")}`} />
                     </div>
                   </div>
                 ))}
               </div>
             </Section>
             <Section title="Información Económica y de cantidad generada">
-              <Row label="Peso (kg)" value={String(formData.pesoKg || 0)} />
-              <Row label="Unidades" value={String(formData.cantidadUnidades || 0)} />
-              <Row label="Costo del material" value={costoNoAplica ? "No aplica" : `COP ${Number(formData.costoDestruccion || 0).toLocaleString("es-CO")}`} />
+              <Row label="Peso total (kg)" value={String(economicSummary.pesoKg || formData.pesoKg || 0)} />
+              <Row label="Unidades totales" value={String(economicSummary.cantidadUnidades || formData.cantidadUnidades || 0)} />
+              <Row label="Valor total a destruir" value={costoNoAplica ? "No aplica" : `COP ${Number(economicSummary.costoTotal || formData.costoDestruccion || 0).toLocaleString("es-CO")}`} />
             </Section>
             <Section title="Causal">
               <Row label="Causal" value={selectedCausal ? CAUSAL_LABELS[selectedCausal] : ""} />

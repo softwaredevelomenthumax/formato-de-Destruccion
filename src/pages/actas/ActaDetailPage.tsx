@@ -192,6 +192,10 @@ export default function ActaDetailPage() {
                   <Row label="Clasificación" value={CLASIFICACION_LABELS[material.clasificacion]} />
                   <Row label="Fecha Vencimiento" value={material.fechaVencimiento} />
                   <Row label="Sustancia Controlada" value={material.sustanciaControlada ? "Sí" : "No"} />
+                  <Row label="Peso (kg)" value={material.pesoKg == null ? "No especificado" : `${material.pesoKg} kg`} />
+                  <Row label="Unidades" value={material.cantidadUnidades == null ? "No especificado" : String(material.cantidadUnidades)} />
+                  <Row label="Precio unitario" value={material.costoUnitario == null ? "No especificado" : `COP ${Number(material.costoUnitario).toLocaleString("es-CO")}`} />
+                  <Row label="Total del material" value={material.costoTotal == null ? "No especificado" : `COP ${Number(material.costoTotal).toLocaleString("es-CO")}`} />
                 </Grid2>
               </div>
             ))}
@@ -201,7 +205,7 @@ export default function ActaDetailPage() {
             <Grid2>
               <Row label="Peso (kg)" value={`${safePeso} kg`} />
               <Row label="Unidades" value={String(safeCantidad)} />
-              <Row label="Costo del material" value={safeCosto === 0 ? "No aplica" : `COP ${safeCosto.toLocaleString("es-CO")}`} />
+              <Row label="Valor total a destruir" value={safeCosto === 0 ? "No aplica" : `COP ${safeCosto.toLocaleString("es-CO")}`} />
               <Row label="Requiere Costos" value={acta.requiereCostos ? "Sí" : "No"} />
             </Grid2>
           </InfoCard>
