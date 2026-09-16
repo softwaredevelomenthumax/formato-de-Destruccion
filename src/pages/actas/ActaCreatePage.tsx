@@ -51,6 +51,33 @@ const MATERIAL_TYPE_OPTIONS = [
 
 const INVIMA_CLASSIFICATIONS = new Set(["MP", "ME", "PT"]);
 
+const normalizeMaterialType = (value: unknown) => {
+  const normalized = String(value || "")
+    .trim()
+    .toUpperCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[\s_-]+/g, "");
+  const aliases: Record<string, string> = {
+    ROH: "ROH",
+    MATERIAPRIMA: "ROH",
+    FERT: "FERT",
+    PRODUCTOTERMINADO: "FERT",
+    HALB: "HALB",
+    SEMITERMINADO: "HALB",
+    PRODUCTOSEMITERMINADO: "HALB",
+    ME: "ME",
+    VERP: "ME",
+    ZEMB: "ME",
+    MATERIALEMPAQUE: "ME",
+    UNBW: "UNBW",
+    REACTIVO: "UNBW",
+    REACTIVOS: "UNBW",
+    MATERIALDELABORATORIO: "UNBW",
+  };
+  return aliases[normalized] || String(value || "").trim().toUpperCase();
+};
+
 const normalizeClassification = (value: unknown) => {
   const normalized = String(value || "").trim().toUpperCase();
   const aliases: Record<string, string> = {
@@ -79,11 +106,12 @@ const getMaterialClassification = (product: InvimaProduct) => {
 };
 
 const getMaterialTypeCode = (product: InvimaProduct) => {
+  const materialType = normalizeMaterialType(product.clase);
   const materialCode = (product.codigoMaterial || "").trim().toUpperCase();
-  if (MATERIAL_TYPE_OPTIONS.some((option) => option.value === materialCode)) return materialCode;
+  const optionByType = MATERIAL_TYPE_OPTIONS.find((option) => option.value === materialType);
+  if (optionByType) return optionByType.value;
 
-  const classification = (product.clase || "").trim().toUpperCase();
-  return MATERIAL_TYPE_OPTIONS.find((option) => option.classification === classification)?.value || materialCode || classification;
+  return MATERIAL_TYPE_OPTIONS.find((option) => option.classification === normalizeClassification(materialType))?.value || materialType;
 };
 
 const CAUSAL_ICONS: Record<CausalDestruccion, ReactNode> = {
@@ -605,7 +633,10 @@ export default function ActaCreatePage() {
   });
 
   const selectedMasterMaterial = invimaProducts.find((product) =>
-    product.id === form2.watch("invimaProductId") || product.codigo === form2.watch("codigoSAP")
+    product.id === form2.watch("invimaProductId") ||
+    [product.codigo, product.codigoMaterial].some((code) =>
+      code?.trim().toLowerCase() === form2.watch("codigoSAP")?.trim().toLowerCase()
+    )
   );
   const invimaNotApplicable = form2.watch("registroINVIMA") === "N/A";
   const sapNotApplicable = form2.watch("codigoSAP") === "N/A";
@@ -1309,6 +1340,9 @@ export default function ActaCreatePage() {
                   className={`w-full px-3 py-2.5 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${sapNotApplicable ? "border-slate-300 bg-white text-slate-700" : "border-slate-200 bg-slate-50 text-slate-700 cursor-default"}`}
                 >
                   <option value="">{sapNotApplicable ? "Seleccione el tipo de material" : "Sin tipo asociado"}</option>
+                  {selectedMaterialType && !MATERIAL_TYPE_OPTIONS.some((option) => option.value === selectedMaterialType) && (
+                    <option value={selectedMaterialType}>{selectedMaterialType} = Tipo SAP</option>
+                  )}
                   {MATERIAL_TYPE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
                 </select>
                 <p className="mt-1 text-xs text-slate-500">{sapNotApplicable ? "Seleccione el código que corresponda al material." : "Se completa automáticamente al seleccionar un código SAP del maestro."}</p>

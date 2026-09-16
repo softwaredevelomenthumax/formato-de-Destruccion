@@ -33,6 +33,17 @@ const allowedOrigins = (process.env.CORS_ORIGIN || '')
     'http://10.255.6.4:8443',
   ]);
 
+function isIpv4Origin(origin) {
+  try {
+    const url = new URL(origin);
+    const isIpv4 = /^\d{1,3}(?:\.\d{1,3}){3}$/.test(url.hostname);
+    const hasValidOctets = url.hostname.split('.').every((octet) => Number(octet) <= 255);
+    return isIpv4 && hasValidOctets && url.protocol === 'http:' && url.port === '8443';
+  } catch {
+    return false;
+  }
+}
+
 // Middlewares
 app.use(cors({
   origin(origin, callback) {
@@ -46,7 +57,7 @@ app.use(cors({
       return;
     }
 
-    if (origin.startsWith('http://10.179.12.')) {
+    if (isIpv4Origin(origin)) {
       callback(null, true);
       return;
     }
