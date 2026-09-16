@@ -56,14 +56,15 @@ async function importZmm059() {
 
   for (const [index, row] of rows.entries()) {
     const material = text(row.Material);
+    const materialType = text(row['Tipo material']).toUpperCase();
     const sourceCenter = text(row.Centro).toUpperCase();
     const company = companies[sourceCenter] || { code: sourceCenter, name: text(row.Empresa) || sourceCenter };
     table.rows.add(
       `zmm059-${index + 1}`, material, material, text(row['Texto breve de material']),
-      text(row['Tipo material']), text(row['Unidad medida base']), numberValue(row['Precio estándar']),
+      materialType, text(row['Unidad medida base']), numberValue(row['Precio estándar']),
       sourceCenter, company.code, company.name, text(row['PB nivel centro']),
       text(row['Status mat.todos ce.']), text(row['Stat.mat.específ.ce.']), text(row['Planif.necesidades']),
-      'N/A', '', company.name, text(row['Tipo material']), 0, text(row['Texto breve de material']), 1, 0,
+      'N/A', '', company.name, materialType, materialType === 'PT' || materialType === 'FERT' ? 1 : 0, text(row['Texto breve de material']), 1, 0,
     );
   }
 

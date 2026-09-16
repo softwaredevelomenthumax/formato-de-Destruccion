@@ -17,6 +17,7 @@ const emptyMaterial = (): Omit<InvimaProduct, "id"> => ({
   internalStatus: "", requiereSap: true, requiereInvima: true, unidadMedidaBase: "",
   precioEstandar: undefined, densidad: undefined, pesoUnidad: undefined,
 });
+const isControlledType = (value: unknown) => ["PT", "FERT"].includes(String(value || "").trim().toUpperCase());
 
 export default function InvimaPage() {
   const { user } = useAuth();
@@ -40,7 +41,11 @@ export default function InvimaPage() {
   const openEdit = (item: InvimaProduct) => { setEditItem(item); setForm({ ...emptyMaterial(), ...item }); setModalOpen(true); };
   const handleSave = () => {
     if (!form.codigo?.trim() || !form.productName.trim()) { toast.error("Material y texto breve son obligatorios"); return; }
-    const material = { ...form, codigoMaterial: form.codigoMaterial?.trim() || form.codigo.trim() };
+    const material = {
+      ...form,
+      codigoMaterial: form.codigoMaterial?.trim() || form.codigo.trim(),
+      controlado: isControlledType(form.clase) || form.controlado,
+    };
     if (editItem) { updateInvimaProduct(editItem.id, material); toast.success("Material actualizado"); }
     else { addInvimaProduct(material); toast.success("Material creado"); }
     setModalOpen(false);
