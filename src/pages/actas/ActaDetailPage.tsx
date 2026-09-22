@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router";
 import {
   ArrowLeft, CheckCircle2, XCircle, RotateCcw, Send, Edit2,
@@ -28,6 +28,7 @@ export default function ActaDetailPage() {
   const [approveComment, setApproveComment] = useState("");
   const [rejectReason, setRejectReason] = useState("");
   const [returnCausal, setReturnCausal] = useState("");
+  const [materialPage, setMaterialPage] = useState(0);
   const [ajustes, setAjustes] = useState<AjusteField[]>([{ campo: "", correccion: "", comentario: "" }]);
 
   const acta = actas.find((a) => a.id === id);
@@ -66,6 +67,22 @@ export default function ActaDetailPage() {
   const canApprove = paso && acta.status === `pendiente_${paso === "area" ? "aprobacion_area" : paso}` && acta.solicitanteId !== user.id;
   const canEdit = user.rol === "solicitante" && acta.solicitanteId === user.id && (acta.status === "borrador" || acta.status === "devuelta_ajustes");
   const canSend = user.rol === "solicitante" && acta.solicitanteId === user.id && acta.status === "borrador";
+  const materialList = acta.materiales?.length ? acta.materiales : [{
+    descripcion: acta.descripcion,
+    codigoSAP: acta.codigoSAP,
+    tipoMaterial: acta.tipoMaterial,
+    registroINVIMA: acta.registroINVIMA,
+    numeroLote: acta.numeroLote,
+    ordenProduccion: acta.ordenProduccion,
+    clasificacion: acta.clasificacion,
+    fechaVencimiento: acta.fechaVencimiento,
+    sustanciaControlada: acta.sustanciaControlada,
+    pesoKg: acta.pesoKg,
+    cantidadUnidades: acta.cantidadUnidades,
+    costoUnitario: acta.costoDestruccion,
+    costoTotal: acta.costoDestruccion,
+  }];
+  const currentMaterial = materialList[materialPage] ?? materialList[0];
 
   const handleApprove = async () => {
     if (!paso || isApproving) return;
@@ -108,6 +125,10 @@ export default function ActaDetailPage() {
   const updateAjuste = (i: number, field: keyof AjusteField, value: string) => {
     setAjustes((prev) => prev.map((a, idx) => idx === i ? { ...a, [field]: value } : a));
   };
+
+  useEffect(() => {
+    setMaterialPage((previous) => Math.min(previous, Math.max(materialList.length - 1, 0)));
+  }, [materialList.length]);
 
   return (
     <div className="max-w-4xl mx-auto space-y-5">
@@ -170,35 +191,47 @@ export default function ActaDetailPage() {
           </InfoCard>
 
           <InfoCard title="Información del Material">
-            {(acta.materiales?.length ? acta.materiales : [{
-              descripcion: acta.descripcion,
-              codigoSAP: acta.codigoSAP,
-              tipoMaterial: acta.tipoMaterial,
-              registroINVIMA: acta.registroINVIMA,
-              numeroLote: acta.numeroLote,
-              ordenProduccion: acta.ordenProduccion,
-              clasificacion: acta.clasificacion,
-              fechaVencimiento: acta.fechaVencimiento,
-              sustanciaControlada: acta.sustanciaControlada,
-            }]).map((material, index) => (
-              <div key={`${material.codigoSAP}-${index}`} className="border-b border-slate-100 pb-4 last:border-0 last:pb-0">
-                <p className="mb-2 text-sm font-semibold text-slate-800">Producto {index + 1}: {material.descripcion}</p>
+            <div className="space-y-3">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">Producto {materialPage + 1} de {materialList.length}</p>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setMaterialPage((current) => Math.max(current - 1, 0))}
+                    disabled={materialPage === 0}
+                    className="rounded-md border border-slate-300 px-2 py-1 text-[11px] font-medium text-slate-700 disabled:cursor-not-allowed disabled:opacity-40 hover:bg-slate-50"
+                  >
+                    Anterior
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setMaterialPage((current) => Math.min(current + 1, materialList.length - 1))}
+                    disabled={materialPage === materialList.length - 1}
+                    className="rounded-md border border-slate-300 px-2 py-1 text-[11px] font-medium text-slate-700 disabled:cursor-not-allowed disabled:opacity-40 hover:bg-slate-50"
+                  >
+                    Siguiente
+                  </button>
+                </div>
+              </div>
+
+              <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                <p className="mb-2 text-sm font-semibold text-slate-800">{currentMaterial.descripcion}</p>
                 <Grid2>
-                  <Row label="Código SAP" value={material.codigoSAP} />
-                  <Row label="Tipo de material" value={material.tipoMaterial || "No especificado"} />
-                  <Row label="Registro INVIMA" value={material.registroINVIMA} />
-                  <Row label="Número de Lote" value={material.numeroLote} />
-                  <Row label="Orden de Producción" value={material.ordenProduccion} />
-                  <Row label="Clasificación" value={CLASIFICACION_LABELS[material.clasificacion]} />
-                  <Row label="Fecha Vencimiento" value={material.fechaVencimiento} />
-                  <Row label="Sustancia Controlada" value={material.sustanciaControlada ? "Sí" : "No"} />
-                  <Row label="Peso (kg)" value={material.pesoKg == null ? "No especificado" : `${material.pesoKg} kg`} />
-                  <Row label="Unidades" value={material.cantidadUnidades == null ? "No especificado" : String(material.cantidadUnidades)} />
-                  <Row label="Precio unitario" value={material.costoUnitario == null ? "No especificado" : `COP ${Number(material.costoUnitario).toLocaleString("es-CO")}`} />
-                  <Row label="Total del material" value={material.costoTotal == null ? "No especificado" : `COP ${Number(material.costoTotal).toLocaleString("es-CO")}`} />
+                  <Row label="Código SAP" value={currentMaterial.codigoSAP} />
+                  <Row label="Tipo de material" value={currentMaterial.tipoMaterial || "No especificado"} />
+                  <Row label="Registro INVIMA" value={currentMaterial.registroINVIMA} />
+                  <Row label="Número de Lote" value={currentMaterial.numeroLote} />
+                  <Row label="Orden de Producción" value={currentMaterial.ordenProduccion} />
+                  <Row label="Clasificación" value={CLASIFICACION_LABELS[currentMaterial.clasificacion]} />
+                  <Row label="Fecha Vencimiento" value={currentMaterial.fechaVencimiento} />
+                  <Row label="Sustancia Controlada" value={currentMaterial.sustanciaControlada ? "Sí" : "No"} />
+                  <Row label="Peso (kg)" value={currentMaterial.pesoKg == null ? "No especificado" : `${currentMaterial.pesoKg} kg`} />
+                  <Row label="Unidades" value={currentMaterial.cantidadUnidades == null ? "No especificado" : String(currentMaterial.cantidadUnidades)} />
+                  <Row label="Precio unitario" value={currentMaterial.costoUnitario == null ? "No especificado" : `COP ${Number(currentMaterial.costoUnitario).toLocaleString("es-CO")}`} />
+                  <Row label="Total del material" value={currentMaterial.costoTotal == null ? "No especificado" : `COP ${Number(currentMaterial.costoTotal).toLocaleString("es-CO")}`} />
                 </Grid2>
               </div>
-            ))}
+            </div>
           </InfoCard>
 
           <InfoCard title="Información Económica">

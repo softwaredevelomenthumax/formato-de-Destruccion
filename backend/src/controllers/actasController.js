@@ -1,5 +1,6 @@
 import { getPool } from '../database/connection.js';
 import { sendNotificationEmail } from '../services/emailService.js';
+import sql from 'mssql';
 
 async function createAndSendNotification(pool, recipient, { title, message, type = 'info', actaId, actaReference }) {
   // La columna notifications.id admite hasta 50 caracteres. Los UUID de
@@ -131,7 +132,7 @@ export async function createActa(req, res) {
       .input('causal', causal)
       .input('otraCausal', otraCausal)
       .input('observaciones', observaciones)
-      .input('adjuntos', JSON.stringify(adjuntos || []))
+      .input('adjuntos', sql.NVarChar(sql.MAX), JSON.stringify(adjuntos || []))
       .input('requiereCostos', requiereCostos)
       .input('cecoId', cecoId)
       .input('invimaProductId', invimaProductId)
@@ -277,7 +278,15 @@ export async function updateActa(req, res) {
     Object.entries(updates).forEach(([key, value]) => {
       if (key !== 'id' && key !== 'historial' && key !== 'aprobaciones' && key !== 'materiales') {
         fields.push(`${key} = @${key}`);
-        request.input(key, value);
+        if (key === 'adjuntos') {
+          request.input(
+            key,
+            sql.NVarChar(sql.MAX),
+            typeof value === 'string' ? value : JSON.stringify(value || []),
+          );
+        } else {
+          request.input(key, value);
+        }
       }
     });
 

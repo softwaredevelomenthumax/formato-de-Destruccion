@@ -87,7 +87,7 @@ export default function NotificationsPage() {
         {selectedNotification && (
           <div className="space-y-4">
             <div className={`rounded-lg border px-4 py-3 ${TYPE_STYLES[selectedNotification.type]?.bg || TYPE_STYLES.info.bg}`}>
-              <p className="text-sm font-semibold text-slate-800">{getMessage(selectedNotification)}</p>
+              <p className="text-sm font-semibold text-slate-800 leading-relaxed break-words">{getMessage(selectedNotification)}</p>
             </div>
             {selectedNotification.actaId && (
               <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">
@@ -122,9 +122,9 @@ export default function NotificationsPage() {
                 >
                   <div className={`w-2.5 h-2.5 rounded-full shrink-0 mt-1.5 ${n.read ? "bg-slate-300" : styles.dot}`} />
                   <div className="flex-1 min-w-0">
-                    <p className={`text-sm font-semibold ${n.read ? "text-slate-600" : "text-slate-900"}`}>{n.title || "Notificación"}</p>
-                    <p className="text-sm text-slate-600 mt-0.5">{getMessage(n)}</p>
-                    <p className="text-xs text-slate-400 mt-1">
+                    <p className={`text-sm font-semibold leading-5 break-words ${n.read ? "text-slate-600" : "text-slate-900"}`}>{n.title || "Notificación"}</p>
+                    <p className="text-sm text-slate-600 mt-0.5 leading-relaxed break-words">{getMessage(n)}</p>
+                    <p className="text-xs text-slate-400 mt-1 leading-normal">
                       {n.createdAt ? formatDistanceToNow(new Date(n.createdAt), { addSuffix: true, locale: es }) : "Hace un momento"}
                     </p>
                   </div>

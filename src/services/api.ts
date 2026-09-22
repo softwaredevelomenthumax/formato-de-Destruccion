@@ -52,7 +52,14 @@ export const api = {
 	getActas: () => fetchJson(`${API_BASE_URL}/actas`, { headers: getHeaders() }),
 	getActa: (id) => fetchJson(`${API_BASE_URL}/actas/${id}`, { headers: getHeaders() }),
 	createActa: (acta) => fetchJson(`${API_BASE_URL}/actas`, { method: "POST", headers: getHeaders(), body: JSON.stringify(acta) }),
-	updateActa: (id, updates) => fetchJson(`${API_BASE_URL}/actas/${id}`, { method: "PUT", headers: getHeaders(), body: JSON.stringify(updates) }),
+	updateActa: (id, updates) => fetchJson(`${API_BASE_URL}/actas/${id}`, {
+		method: "PUT",
+		headers: getHeaders(),
+		body: JSON.stringify({
+			...updates,
+			adjuntos: Array.isArray(updates.adjuntos) ? JSON.stringify(updates.adjuntos) : updates.adjuntos,
+		}),
+	}),
 	deleteActa: (id) => fetchJson(`${API_BASE_URL}/actas/${id}`, { method: "DELETE", headers: getHeaders() }),
 	submitActa: (id, data) => fetchJson(`${API_BASE_URL}/actas/${id}/submit`, { method: "POST", headers: getHeaders(), body: JSON.stringify(data) }),
 	approveActa: (id, data) => fetchJson(`${API_BASE_URL}/actas/${id}/approve`, { method: "POST", headers: getHeaders(), body: JSON.stringify(data) }),

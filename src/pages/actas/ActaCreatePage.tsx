@@ -5,7 +5,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import {
   Calendar, Package, AlertTriangle, CheckCircle2, Info, Upload, X,
-  Trash2, RotateCcw, Zap, ShieldOff, Wrench, HelpCircle, Search
+  Trash2, RotateCcw, Zap, ShieldOff, Wrench, HelpCircle, Search, Loader2
 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import { useApp } from "../../context/AppContext";
@@ -386,7 +386,11 @@ export default function ActaCreatePage() {
   const [showMaterialWarningModal, setShowMaterialWarningModal] = useState(false);
   const [materialNotice, setMaterialNotice] = useState("");
   const [materials, setMaterials] = useState<ActaMaterial[]>([]);
+  const [materialPage, setMaterialPage] = useState(0);
+  const [summaryMaterialPage, setSummaryMaterialPage] = useState(0);
   const [costoNoAplica, setCostoNoAplica] = useState(false);
+  const [isSendingApproval, setIsSendingApproval] = useState(false);
+  const [sendingConsecutivo, setSendingConsecutivo] = useState("");
   const [maxStepReached, setMaxStepReached] = useState(0);
   const draftLoadedRef = useRef(false);
   const [cecos, setCecos] = useState<Ceco[]>([]);
@@ -420,6 +424,9 @@ export default function ActaCreatePage() {
   const form1Values = form1.watch();
   const form2Values = form2.watch();
   const form3Values = form3.watch();
+  const materialSummary = formData.descripcion
+    ? materialsForSave(formData as Step2Data)
+    : materials;
 
   useEffect(() => {
     if (user?.area) {
@@ -437,7 +444,7 @@ export default function ActaCreatePage() {
     form1.reset({
       empresa: editingActa.empresa,
       centroCostos: editingActa.centroCostos,
-      fecha: editingActa.fecha,
+      fecha: editingActa.fecha ? editingActa.fecha.slice(0, 10) : "",
       responsable: editingActa.responsable,
       area: editingActa.area,
     });
@@ -448,7 +455,7 @@ export default function ActaCreatePage() {
       ordenProduccion: editingActa.ordenProduccion,
       sustanciaControlada: editingActa.sustanciaControlada,
       clasificacion: normalizeClassification(editingActa.clasificacion) as Step2Data["clasificacion"],
-      fechaVencimiento: editingActa.fechaVencimiento,
+      fechaVencimiento: editingActa.fechaVencimiento ? editingActa.fechaVencimiento.slice(0, 10) : "",
       registroINVIMA: editingActa.registroINVIMA,
       estadoInvima: editingActa.estadoInvima || "N/A",
       tipoMaterial: editingActa.tipoMaterial,
@@ -464,7 +471,7 @@ export default function ActaCreatePage() {
         ordenProduccion: lastMaterial.ordenProduccion,
         sustanciaControlada: lastMaterial.sustanciaControlada,
         clasificacion: normalizeClassification(lastMaterial.clasificacion) as Step2Data["clasificacion"],
-        fechaVencimiento: lastMaterial.fechaVencimiento,
+        fechaVencimiento: lastMaterial.fechaVencimiento ? lastMaterial.fechaVencimiento.slice(0, 10) : "",
         registroINVIMA: lastMaterial.registroINVIMA,
         estadoInvima: lastMaterial.estadoInvima || "N/A",
         tipoMaterial: lastMaterial.tipoMaterial,
@@ -540,6 +547,15 @@ export default function ActaCreatePage() {
       draftLoadedRef.current = true;
     }
   }, []);
+
+  useEffect(() => {
+    setMaterialPage((previous) => Math.min(previous, Math.max(materials.length - 1, 0)));
+  }, [materials.length]);
+
+  useEffect(() => {
+    const total = materialSummary.length;
+    setSummaryMaterialPage((previous) => Math.min(previous, Math.max(total - 1, 0)));
+  }, [materialSummary.length]);
 
   useEffect(() => {
     if (!draftLoadedRef.current) return;
@@ -644,6 +660,15 @@ export default function ActaCreatePage() {
       code?.trim().toLowerCase() === form2.watch("codigoSAP")?.trim().toLowerCase()
     )
   );
+  const masterUnitPrice = selectedMasterMaterial?.precioEstandar;
+  const hasMasterUnitPrice = masterUnitPrice != null && Number.isFinite(Number(masterUnitPrice));
+
+  useEffect(() => {
+    if (!selectedMasterMaterial) return;
+    form3.setValue("costoDestruccion", hasMasterUnitPrice ? Number(masterUnitPrice) : 0, { shouldValidate: true, shouldDirty: true });
+    setCostoNoAplica(false);
+  }, [form3, hasMasterUnitPrice, masterUnitPrice, selectedMasterMaterial]);
+
   const invimaNotApplicable = form2.watch("registroINVIMA") === "N/A";
   const sapNotApplicable = form2.watch("codigoSAP") === "N/A";
   const masterType = (selectedMasterMaterial?.clase || "").toUpperCase();
@@ -766,26 +791,28 @@ export default function ActaCreatePage() {
     continueFromMaterialStep();
   };
 
-  const materialFromData = (data: Step2Data, economicData?: Step3Data): ActaMaterial => ({
-    descripcion: data.descripcion,
-    tipoMaterial: data.tipoMaterial,
-    codigoSAP: data.codigoSAP,
-    numeroLote: data.numeroLote,
-    ordenProduccion: data.ordenProduccion,
-    sustanciaControlada: data.sustanciaControlada,
-    clasificacion: normalizeClassification(data.clasificacion) as Step2Data["clasificacion"],
-    fechaVencimiento: data.fechaVencimiento,
-    registroINVIMA: data.registroINVIMA,
-    estadoInvima: data.estadoInvima,
-    invimaProductId: data.invimaProductId,
-    sapCodeId: data.sapCodeId,
-    pesoKg: economicData?.pesoKg,
-    cantidadUnidades: economicData?.cantidadUnidades,
-    costoUnitario: economicData?.costoDestruccion,
-    costoTotal: economicData ? Number(economicData.cantidadUnidades) * Number(economicData.costoDestruccion) : undefined,
-  });
+  function materialFromData(data: Step2Data, economicData?: Step3Data): ActaMaterial {
+    return {
+      descripcion: data.descripcion,
+      tipoMaterial: data.tipoMaterial,
+      codigoSAP: data.codigoSAP,
+      numeroLote: data.numeroLote,
+      ordenProduccion: data.ordenProduccion,
+      sustanciaControlada: data.sustanciaControlada,
+      clasificacion: normalizeClassification(data.clasificacion) as Step2Data["clasificacion"],
+      fechaVencimiento: data.fechaVencimiento,
+      registroINVIMA: data.registroINVIMA,
+      estadoInvima: data.estadoInvima,
+      invimaProductId: data.invimaProductId,
+      sapCodeId: data.sapCodeId,
+      pesoKg: economicData?.pesoKg,
+      cantidadUnidades: economicData?.cantidadUnidades,
+      costoUnitario: economicData?.costoDestruccion,
+      costoTotal: economicData ? Number(economicData.cantidadUnidades) * Number(economicData.costoDestruccion) : undefined,
+    };
+  }
 
-  const materialsForSave = (current: Partial<Step2Data>) => {
+  function materialsForSave(current: Partial<Step2Data>) {
     if (!String(current.descripcion || "").trim()) return materials;
 
     const currentMaterial = materialFromData(current as Step2Data);
@@ -797,11 +824,15 @@ export default function ActaCreatePage() {
     );
 
     return isAlreadyAdded ? materials : [...materials, currentMaterial];
-  };
+  }
 
   const addMaterial = (data: Step2Data, economicData: Step3Data) => {
     const newMaterial = materialFromData(data, economicData);
-    setMaterials((current) => [...current, newMaterial]);
+    setMaterials((current) => {
+      const next = [...current, newMaterial];
+      setMaterialPage(Math.max(next.length - 1, 0));
+      return next;
+    });
     setFormData((previous) => ({
       ...previous,
       ...data,
@@ -928,6 +959,8 @@ export default function ActaCreatePage() {
 
   const handleSendApproval = async () => {
     if (!user || !selectedCausal) return;
+    setIsSendingApproval(true);
+    setSendingConsecutivo(editingActa?.consecutivo || "");
     try {
       const data = { ...formData } as any;
       const materialItems = materialsForSave(data as Step2Data);
@@ -992,11 +1025,14 @@ export default function ActaCreatePage() {
       adjuntos,
       materiales: materialItems,
       });
+      setSendingConsecutivo(acta.consecutivo);
       await sendActa(acta.id, user.id, user.nombre);
       window.localStorage.removeItem(ACTA_DRAFT_STORAGE_KEY);
       toast.success(`Acta ${acta.consecutivo} enviada a aprobación`);
       navigate(`/actas/${acta.id}`);
     } catch (error) {
+      setIsSendingApproval(false);
+      setSendingConsecutivo("");
       toast.error(error instanceof Error ? error.message : "No se pudo crear el acta");
     }
   };
@@ -1010,9 +1046,7 @@ export default function ActaCreatePage() {
     true,
   ];
   const progress = filled.filter(Boolean).length;
-  const materialSummary = formData.descripcion
-    ? materialsForSave(formData as Step2Data)
-    : materials;
+  const summaryMaterial = materialSummary[summaryMaterialPage] ?? materialSummary[0];
   const economicSummary = materialSummary.reduce((totals, material) => ({
     pesoKg: totals.pesoKg + Number(material.pesoKg || 0),
     cantidadUnidades: totals.cantidadUnidades + Number(material.cantidadUnidades || 0),
@@ -1021,6 +1055,25 @@ export default function ActaCreatePage() {
 
   return (
     <div className="max-w-3xl mx-auto space-y-6">
+      {isSendingApproval && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/45 px-4 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-2xl bg-white p-7 text-center shadow-2xl">
+            <Loader2 size={34} className="mx-auto animate-spin text-blue-700" />
+            <h2 className="mt-4 text-lg font-bold text-slate-900">
+              {sendingConsecutivo ? "Acta en proceso de envío" : "Generando el consecutivo del acta"}
+            </h2>
+            {sendingConsecutivo ? (
+              <>
+                <p className="mt-2 text-sm text-slate-600">Recuerde este consecutivo para hacer seguimiento a la destrucción:</p>
+                <p className="mt-4 rounded-lg bg-blue-50 px-4 py-3 font-mono text-2xl font-bold tracking-wide text-blue-800">{sendingConsecutivo}</p>
+                <p className="mt-3 text-xs font-medium text-slate-500">Puede tomarle una foto mientras terminamos de enviar el acta a aprobación.</p>
+              </>
+            ) : (
+              <p className="mt-2 text-sm text-slate-600">Estamos preparando el acta. En unos segundos aparecerá su consecutivo.</p>
+            )}
+          </div>
+        </div>
+      )}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-bold text-slate-900">{isEditing ? "Editar Acta de Destrucción" : form2.watch("sustanciaControlada") === true ? "Acta para producto controlado" : form2.watch("sustanciaControlada") === false ? "Acta para producto no controlado" : "Nueva Acta de Destrucción"}</h1>
@@ -1421,59 +1474,120 @@ export default function ActaCreatePage() {
             </div>
           </form>
           <div className="mt-6 rounded-xl border border-slate-200 bg-slate-50 p-3">
-              <div className="flex items-center justify-between">
-                <h3 className="text-sm font-semibold text-slate-700">Productos agregados</h3>
-                <span className="rounded-full bg-blue-100 px-2.5 py-1 text-xs font-semibold text-blue-700">{materials.length}</span>
-              </div>
-              <div className="mt-3 overflow-x-auto rounded-lg border border-slate-200 bg-white">
-                <table className="min-w-[1260px] w-full text-sm">
-                  <thead className="border-b border-slate-200 bg-slate-100">
-                    <tr>
-                      <th className="px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">#</th>
-                      <th className="px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Descripción</th>
-                      <th className="px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">INVIMA</th>
-                      <th className="px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Código SAP</th>
-                      <th className="px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Tipo</th>
-                      <th className="px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Lote</th>
-                      <th className="px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Orden</th>
-                      <th className="px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Clasificación</th>
-                      <th className="px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Vencimiento</th>
-                      <th className="px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Controlado</th>
-                      <th className="px-3 py-2.5 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">Unidades</th>
-                      <th className="px-3 py-2.5 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">Precio unitario</th>
-                      <th className="px-3 py-2.5 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">Total</th>
-                      <th className="px-3 py-2.5 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">Acción</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {materials.length === 0 ? (
-                      <tr>
-                        <td colSpan={14} className="px-3 py-5 text-center text-xs text-slate-500">Complete un producto y pulse “Siguiente” para ingresar su información económica.</td>
-                      </tr>
-                    ) : materials.map((material, index) => (
-                        <tr key={`${material.codigoSAP}-${index}`} className="hover:bg-blue-50/50">
-                          <td className="px-3 py-2.5 font-medium text-slate-500">{index + 1}</td>
-                          <td className="max-w-[280px] truncate px-3 py-2.5 font-medium text-slate-800" title={material.descripcion}>{material.descripcion}</td>
-                          <td className="px-3 py-2.5 font-mono text-xs text-slate-700">{material.registroINVIMA}</td>
-                          <td className="px-3 py-2.5 font-mono text-xs text-slate-700">{material.codigoSAP}</td>
-                          <td className="px-3 py-2.5 text-slate-700">{material.tipoMaterial || "N/A"}</td>
-                          <td className="px-3 py-2.5 text-slate-700">{material.numeroLote}</td>
-                          <td className="px-3 py-2.5 text-slate-700">{material.ordenProduccion}</td>
-                          <td className="px-3 py-2.5 text-slate-700">{CLASIFICACION_LABELS[material.clasificacion] || material.clasificacion}</td>
-                          <td className="px-3 py-2.5 text-slate-700">{material.fechaVencimiento}</td>
-                          <td className="px-3 py-2.5 text-slate-700">{material.sustanciaControlada ? "Sí" : "No"}</td>
-                          <td className="px-3 py-2.5 text-right text-slate-700">{material.cantidadUnidades ?? "—"}</td>
-                          <td className="px-3 py-2.5 text-right text-slate-700">{material.costoUnitario == null ? "—" : `COP ${Number(material.costoUnitario).toLocaleString("es-CO")}`}</td>
-                          <td className="px-3 py-2.5 text-right font-semibold text-slate-700">{material.costoTotal == null ? "—" : `COP ${Number(material.costoTotal).toLocaleString("es-CO")}`}</td>
-                          <td className="px-3 py-2.5 text-right">
-                            <button type="button" onClick={() => setMaterials((current) => current.filter((_, materialIndex) => materialIndex !== index))} className="text-xs font-medium text-red-600 hover:text-red-800">Quitar</button>
-                          </td>
-                        </tr>
-                      ))}
-                  </tbody>
-                </table>
-              </div>
+            <div className="flex items-center justify-between gap-3">
+              <h3 className="text-sm font-semibold text-slate-700">Productos agregados</h3>
+              <span className="rounded-full bg-blue-100 px-2.5 py-1 text-xs font-semibold text-blue-700">{materials.length}</span>
             </div>
+
+            {materials.length === 0 ? (
+              <div className="mt-3 rounded-lg border border-slate-200 bg-white px-3 py-5 text-center text-xs text-slate-500">
+                Complete un producto y pulse “Siguiente” para ingresar su información económica.
+              </div>
+            ) : (
+              <div className="mt-3 rounded-lg border border-slate-200 bg-white p-4">
+                <div className="flex items-center justify-between gap-3 pb-3">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-400">Material</p>
+                    <p className="text-sm font-semibold text-slate-800">{materialPage + 1} de {materials.length}</p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setMaterialPage((current) => Math.max(current - 1, 0))}
+                      disabled={materialPage === 0}
+                      className="rounded-lg border border-slate-300 px-2.5 py-1.5 text-xs font-medium text-slate-700 disabled:cursor-not-allowed disabled:opacity-40 hover:bg-slate-50"
+                    >
+                      Anterior
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setMaterialPage((current) => Math.min(current + 1, materials.length - 1))}
+                      disabled={materialPage === materials.length - 1}
+                      className="rounded-lg border border-slate-300 px-2.5 py-1.5 text-xs font-medium text-slate-700 disabled:cursor-not-allowed disabled:opacity-40 hover:bg-slate-50"
+                    >
+                      Siguiente
+                    </button>
+                  </div>
+                </div>
+
+                {(() => {
+                  const material = materials[materialPage];
+                  if (!material) return null;
+                  return (
+                    <div className="space-y-4">
+                      <div className="rounded-lg border border-blue-100 bg-blue-50 p-3">
+                        <p className="text-xs font-semibold uppercase tracking-[0.12em] text-blue-700">Descripción</p>
+                        <p className="mt-1 text-base font-semibold text-slate-900">{material.descripcion}</p>
+                      </div>
+
+                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                        <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                          <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">Código SAP</p>
+                          <p className="mt-1 font-mono text-sm font-semibold text-slate-800">{material.codigoSAP}</p>
+                        </div>
+                        <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                          <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">INVIMA</p>
+                          <p className="mt-1 font-mono text-sm font-semibold text-slate-800">{material.registroINVIMA}</p>
+                        </div>
+                        <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                          <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">Tipo</p>
+                          <p className="mt-1 text-sm font-medium text-slate-800">{material.tipoMaterial || "N/A"}</p>
+                        </div>
+                        <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                          <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">Clasificación</p>
+                          <p className="mt-1 text-sm font-medium text-slate-800">{CLASIFICACION_LABELS[material.clasificacion] || material.clasificacion}</p>
+                        </div>
+                        <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                          <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">Lote</p>
+                          <p className="mt-1 text-sm font-medium text-slate-800">{material.numeroLote}</p>
+                        </div>
+                        <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                          <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">Orden producción</p>
+                          <p className="mt-1 text-sm font-medium text-slate-800">{material.ordenProduccion}</p>
+                        </div>
+                        <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                          <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">Vencimiento</p>
+                          <p className="mt-1 text-sm font-medium text-slate-800">{material.fechaVencimiento}</p>
+                        </div>
+                        <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                          <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">Controlado</p>
+                          <p className="mt-1 text-sm font-medium text-slate-800">{material.sustanciaControlada ? "Sí" : "No"}</p>
+                        </div>
+                        <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                          <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">Unidades</p>
+                          <p className="mt-1 text-sm font-medium text-slate-800">{material.cantidadUnidades ?? "—"}</p>
+                        </div>
+                        <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                          <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">Precio unitario</p>
+                          <p className="mt-1 text-sm font-medium text-slate-800">{material.costoUnitario == null ? "—" : `COP ${Number(material.costoUnitario).toLocaleString("es-CO")}`}</p>
+                        </div>
+                        <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 sm:col-span-2 xl:col-span-2">
+                          <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">Total</p>
+                          <p className="mt-1 text-sm font-semibold text-slate-900">{material.costoTotal == null ? "—" : `COP ${Number(material.costoTotal).toLocaleString("es-CO")}`}</p>
+                        </div>
+                      </div>
+
+                      <div className="flex justify-end">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setMaterials((current) => {
+                              const next = current.filter((_, materialIndex) => materialIndex !== materialPage);
+                              setMaterialPage((previous) => Math.min(previous, Math.max(next.length - 1, 0)));
+                              return next;
+                            });
+                          }}
+                          className="text-sm font-medium text-red-600 hover:text-red-800"
+                        >
+                          Quitar este material
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
+            )}
+          </div>
         </div>
       )}
 
@@ -1511,17 +1625,17 @@ export default function ActaCreatePage() {
               <div className="flex min-w-0 flex-col">
                 <div className="mb-1 flex h-10 items-start gap-2">
                   <label className="min-w-0 flex-1 text-sm font-medium leading-tight text-slate-700">Precio unitario (COP)</label>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const nextValue = !costoNoAplica;
-                      setCostoNoAplica(nextValue);
-                      form3.setValue("costoDestruccion", nextValue ? 0 : "", { shouldValidate: true, shouldDirty: true });
-                    }}
-                    className={`w-[104px] shrink-0 rounded-md border px-2 py-1 text-xs font-medium leading-tight transition-colors ${costoNoAplica ? "border-amber-400 bg-amber-50 text-amber-800" : "border-slate-300 bg-white text-slate-600 hover:border-amber-400 hover:text-amber-700"}`}
-                  >
-                    {costoNoAplica ? "No aplica" : "Marcar no aplica"}
-                  </button>
+                  {!hasMasterUnitPrice && <button
+                      type="button"
+                      onClick={() => {
+                        const nextValue = !costoNoAplica;
+                        setCostoNoAplica(nextValue);
+                        form3.setValue("costoDestruccion", nextValue ? 0 : "", { shouldValidate: true, shouldDirty: true });
+                      }}
+                      className={`w-[104px] shrink-0 rounded-md border px-2 py-1 text-xs font-medium leading-tight transition-colors ${costoNoAplica ? "border-amber-400 bg-amber-50 text-amber-800" : "border-slate-300 bg-white text-slate-600 hover:border-amber-400 hover:text-amber-700"}`}
+                    >
+                      {costoNoAplica ? "No aplica" : "Marcar no aplica"}
+                    </button>}
                 </div>
                 <input
                   {...form3.register("costoDestruccion")}
@@ -1529,10 +1643,11 @@ export default function ActaCreatePage() {
                   inputMode="numeric"
                   maxLength={13}
                   placeholder="0"
-                  disabled={costoNoAplica}
+                  disabled={costoNoAplica || hasMasterUnitPrice}
                   value={costoNoAplica ? "" : form3.watch("costoDestruccion") || ""}
                   className="w-full px-3 py-2.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed"
                 />
+                {hasMasterUnitPrice && <p className="mt-1 text-xs text-blue-700">Precio tomado del maestro de productos.</p>}
                 {costoNoAplica && <p className="mt-1 text-xs text-slate-500">Se guardará como “No aplica” y tendrá valor interno 0.</p>}
                 <FieldError message={form3.formState.errors.costoDestruccion?.message} />
               </div>
@@ -1673,27 +1788,51 @@ export default function ActaCreatePage() {
               <Row label="Área" value={String(formData.area || "")} />
             </Section>
             <Section title="Información del Material">
-              <div className="col-span-2 space-y-3">
-                {materialSummary.map((material, index) => (
-                  <div key={`${material.codigoSAP}-${index}`} className="rounded-lg border border-slate-200 p-3">
-                    <p className="mb-2 text-sm font-semibold text-slate-800">Producto {index + 1}: {material.descripcion}</p>
-                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                      <Row label="Código SAP" value={material.codigoSAP} />
-                      <Row label="Tipo de material" value={material.tipoMaterial || "No especificado"} />
-                      <Row label="Clasificación" value={CLASIFICACION_LABELS[material.clasificacion]} />
-                      <Row label="Registro INVIMA" value={material.registroINVIMA} />
-                      <Row label="Número de Lote" value={material.numeroLote} />
-                      <Row label="Orden de Producción" value={material.ordenProduccion} />
-                      <Row label="Fecha Vencimiento" value={material.fechaVencimiento} />
-                      <Row label="Sustancia Controlada" value={material.sustanciaControlada ? "Sí" : "No"} />
-                      <Row label="Peso (kg)" value={String(material.pesoKg ?? "—")} />
-                      <Row label="Unidades" value={String(material.cantidadUnidades ?? "—")} />
-                      <Row label="Precio unitario" value={material.costoUnitario == null ? "—" : `COP ${Number(material.costoUnitario).toLocaleString("es-CO")}`} />
-                      <Row label="Total del material" value={material.costoTotal == null ? "—" : `COP ${Number(material.costoTotal).toLocaleString("es-CO")}`} />
+              {materialSummary.length === 0 ? (
+                <div className="py-2 text-sm text-slate-500">No hay materiales agregados aún.</div>
+              ) : (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between gap-2 pb-1">
+                    <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-400">Producto {summaryMaterialPage + 1} de {materialSummary.length}</p>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setSummaryMaterialPage((current) => Math.max(current - 1, 0))}
+                        disabled={summaryMaterialPage === 0}
+                        className="rounded-md border border-slate-300 px-2 py-1 text-[11px] font-medium text-slate-700 disabled:cursor-not-allowed disabled:opacity-40 hover:bg-slate-50"
+                      >
+                        Anterior
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setSummaryMaterialPage((current) => Math.min(current + 1, materialSummary.length - 1))}
+                        disabled={summaryMaterialPage === materialSummary.length - 1}
+                        className="rounded-md border border-slate-300 px-2 py-1 text-[11px] font-medium text-slate-700 disabled:cursor-not-allowed disabled:opacity-40 hover:bg-slate-50"
+                      >
+                        Siguiente
+                      </button>
                     </div>
                   </div>
-                ))}
-              </div>
+
+                  <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                    <p className="mb-2 text-sm font-semibold text-slate-800">{summaryMaterial.descripcion}</p>
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                      <Row label="Código SAP" value={summaryMaterial.codigoSAP} />
+                      <Row label="Tipo de material" value={summaryMaterial.tipoMaterial || "No especificado"} />
+                      <Row label="Clasificación" value={CLASIFICACION_LABELS[summaryMaterial.clasificacion]} />
+                      <Row label="Registro INVIMA" value={summaryMaterial.registroINVIMA} />
+                      <Row label="Número de Lote" value={summaryMaterial.numeroLote} />
+                      <Row label="Orden de Producción" value={summaryMaterial.ordenProduccion} />
+                      <Row label="Fecha Vencimiento" value={summaryMaterial.fechaVencimiento} />
+                      <Row label="Sustancia Controlada" value={summaryMaterial.sustanciaControlada ? "Sí" : "No"} />
+                      <Row label="Peso (kg)" value={String(summaryMaterial.pesoKg ?? "—")} />
+                      <Row label="Unidades" value={String(summaryMaterial.cantidadUnidades ?? "—")} />
+                      <Row label="Precio unitario" value={summaryMaterial.costoUnitario == null ? "—" : `COP ${Number(summaryMaterial.costoUnitario).toLocaleString("es-CO")}`} />
+                      <Row label="Total del material" value={summaryMaterial.costoTotal == null ? "—" : `COP ${Number(summaryMaterial.costoTotal).toLocaleString("es-CO")}`} />
+                    </div>
+                  </div>
+                </div>
+              )}
             </Section>
             <Section title="Información Económica y de cantidad generada">
               <Row label="Peso total (kg)" value={String(economicSummary.pesoKg || formData.pesoKg || 0)} />
@@ -1724,7 +1863,7 @@ export default function ActaCreatePage() {
               <button onClick={handleSaveDraft} className="h-11 min-w-[140px] px-5 py-2.5 text-sm font-medium border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition-colors">
                 Guardar Borrador
               </button>
-              <button onClick={handleSendApproval} className="h-11 min-w-[170px] px-5 py-2.5 rounded-lg text-sm font-semibold bg-blue-700 text-white hover:bg-blue-800 transition-colors flex items-center justify-center gap-2">
+              <button onClick={handleSendApproval} disabled={isSendingApproval} className="h-11 min-w-[170px] px-5 py-2.5 rounded-lg text-sm font-semibold bg-blue-700 text-white hover:bg-blue-800 transition-colors flex items-center justify-center gap-2 disabled:cursor-not-allowed disabled:opacity-60">
                 <CheckCircle2 size={16} /> Enviar a Aprobación
               </button>
             </div>
@@ -1794,19 +1933,19 @@ export default function ActaCreatePage() {
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div className="border border-slate-200 rounded-lg overflow-hidden">
-      <div className="bg-slate-50 px-4 py-2 border-b border-slate-200">
-        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">{title}</p>
+      <div className="bg-slate-50 px-3 py-2 border-b border-slate-200">
+        <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">{title}</p>
       </div>
-      <div className="px-4 py-3 divide-y divide-slate-100">{children}</div>
+      <div className="px-3 py-2.5 divide-y divide-slate-100">{children}</div>
     </div>
   );
 }
 
 function Row({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex items-start gap-4 py-1.5">
-      <p className="text-xs text-slate-500 font-medium w-36 shrink-0">{label}</p>
-      <p className="text-sm text-slate-800 flex-1">{value || "—"}</p>
+    <div className="flex items-start gap-3 py-1">
+      <p className="text-[11px] text-slate-500 font-medium w-28 shrink-0">{label}</p>
+      <p className="text-xs text-slate-800 flex-1 leading-relaxed">{value || "—"}</p>
     </div>
   );
 }

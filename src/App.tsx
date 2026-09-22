@@ -3,6 +3,8 @@ import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { router } from "./routes";
 import logoa from "./public/logoa.png";
+import { AuthProvider } from "./context/AuthContext";
+import { AppProvider } from "./context/AppContext";
 
 const THEME_KEY = "add-theme";
 
@@ -32,12 +34,13 @@ export default function App() {
   }, []);
 
   return (
-    <>
-      <RouterProvider router={router} />
+    <AuthProvider>
+      <AppProvider>
+        <RouterProvider router={router} />
 
-      <AnimatePresence mode="wait">
-        {showSplash && (
-          <motion.div
+        <AnimatePresence mode="wait">
+          {showSplash && (
+            <motion.div
             key="app-splash"
             className="fixed inset-0 z-[9999] flex items-center justify-center overflow-hidden bg-white"
             initial={{ opacity: 1 }}
@@ -135,9 +138,10 @@ export default function App() {
               transition={{ duration: 1.2, ease: "easeInOut", delay: 0.5 }}
             />
 
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </AppProvider>
+    </AuthProvider>
   );
 }
