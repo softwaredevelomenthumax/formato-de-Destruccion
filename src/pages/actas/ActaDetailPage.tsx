@@ -32,6 +32,25 @@ export default function ActaDetailPage() {
   const [ajustes, setAjustes] = useState<AjusteField[]>([{ campo: "", correccion: "", comentario: "" }]);
 
   const acta = actas.find((a) => a.id === id);
+  const materialList = acta?.materiales?.length ? acta.materiales : acta ? [{
+    descripcion: acta.descripcion,
+    codigoSAP: acta.codigoSAP,
+    tipoMaterial: acta.tipoMaterial,
+    registroINVIMA: acta.registroINVIMA,
+    numeroLote: acta.numeroLote,
+    ordenProduccion: acta.ordenProduccion,
+    clasificacion: acta.clasificacion,
+    fechaVencimiento: acta.fechaVencimiento,
+    sustanciaControlada: acta.sustanciaControlada,
+    pesoKg: acta.pesoKg,
+    cantidadUnidades: acta.cantidadUnidades,
+    costoUnitario: acta.costoDestruccion,
+    costoTotal: acta.costoDestruccion,
+  }] : [];
+
+  useEffect(() => {
+    setMaterialPage((previous) => Math.min(previous, Math.max(materialList.length - 1, 0)));
+  }, [materialList.length]);
 
   if (!acta) return (
     <div className="text-center py-20">
@@ -67,21 +86,6 @@ export default function ActaDetailPage() {
   const canApprove = paso && acta.status === `pendiente_${paso === "area" ? "aprobacion_area" : paso}` && acta.solicitanteId !== user.id;
   const canEdit = user.rol === "solicitante" && acta.solicitanteId === user.id && (acta.status === "borrador" || acta.status === "devuelta_ajustes");
   const canSend = user.rol === "solicitante" && acta.solicitanteId === user.id && acta.status === "borrador";
-  const materialList = acta.materiales?.length ? acta.materiales : [{
-    descripcion: acta.descripcion,
-    codigoSAP: acta.codigoSAP,
-    tipoMaterial: acta.tipoMaterial,
-    registroINVIMA: acta.registroINVIMA,
-    numeroLote: acta.numeroLote,
-    ordenProduccion: acta.ordenProduccion,
-    clasificacion: acta.clasificacion,
-    fechaVencimiento: acta.fechaVencimiento,
-    sustanciaControlada: acta.sustanciaControlada,
-    pesoKg: acta.pesoKg,
-    cantidadUnidades: acta.cantidadUnidades,
-    costoUnitario: acta.costoDestruccion,
-    costoTotal: acta.costoDestruccion,
-  }];
   const currentMaterial = materialList[materialPage] ?? materialList[0];
 
   const handleApprove = async () => {
@@ -125,10 +129,6 @@ export default function ActaDetailPage() {
   const updateAjuste = (i: number, field: keyof AjusteField, value: string) => {
     setAjustes((prev) => prev.map((a, idx) => idx === i ? { ...a, [field]: value } : a));
   };
-
-  useEffect(() => {
-    setMaterialPage((previous) => Math.min(previous, Math.max(materialList.length - 1, 0)));
-  }, [materialList.length]);
 
   return (
     <div className="max-w-4xl mx-auto space-y-5">
