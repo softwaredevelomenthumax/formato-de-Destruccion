@@ -22,7 +22,7 @@ export function Modal({ open, onClose, title, children, size = "md", footer }: M
   const sizes = { sm: "max-w-sm", md: "max-w-lg", lg: "max-w-2xl", xl: "max-w-4xl" };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4">
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto p-3 pt-6 sm:p-4 sm:pt-10">
       <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
       <div className={`relative bg-white rounded-xl shadow-2xl w-full ${sizes[size]} flex flex-col max-h-[calc(100vh-1.5rem)] sm:max-h-[90vh]`}>
         <div className="flex items-start justify-between gap-3 px-4 py-3 sm:px-6 sm:py-4 border-b border-slate-200">

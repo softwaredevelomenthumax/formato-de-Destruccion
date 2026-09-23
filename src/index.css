@@ -833,3 +833,51 @@ html.dark ::-webkit-scrollbar-thumb:hover {
     transform: translate3d(0, 0px, 0);
   }
 }
+
+/* Keeps row-selection controls inside their table column. */
+td:has(> input[type="radio"]) {
+  width: 4rem;
+  min-width: 4rem;
+  padding: 0.625rem 1rem;
+  text-align: center;
+}
+
+td:has(> input[type="radio"]) > input[type="radio"] {
+  display: block;
+  margin: 0 auto;
+}
+
+table:has(input[type="radio"]) th,
+table:has(input[type="radio"]) td {
+  padding: 0.45rem 0.75rem;
+  text-align: left;
+  vertical-align: middle;
+}
+
+table:has(input[type="radio"]) th:first-child,
+table:has(input[type="radio"]) td:first-child {
+  text-align: center;
+}
+
+table:has(input[type="radio"]) th:nth-child(9),
+table:has(input[type="radio"]) td:nth-child(9),
+table:has(input[type="radio"]) th:nth-child(14),
+table:has(input[type="radio"]) td:nth-child(14),
+table:has(input[type="radio"]) th:nth-child(15),
+table:has(input[type="radio"]) td:nth-child(15) {
+  text-align: right;
+}
+
+@media (max-width: 1400px) {
+  table:has(input[type="radio"]) th:nth-child(n + 10),
+  table:has(input[type="radio"]) td:nth-child(n + 10) {
+    display: none;
+  }
+}
+
+@media (max-width: 768px) {
+  table:has(input[type="radio"]) th:nth-child(n + 7),
+  table:has(input[type="radio"]) td:nth-child(n + 7) {
+    display: none;
+  }
+}

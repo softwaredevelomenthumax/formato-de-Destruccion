@@ -10,7 +10,7 @@ import {
 import { useAuth } from "../../context/AuthContext";
 import { useApp } from "../../context/AppContext";
 import { Stepper, ProgressBar } from "../../components/ui/Stepper";
-import { Modal } from "../../components/ui/Modal";
+import { ConfirmModal, Modal } from "../../components/ui/Modal";
 import {
   CLASIFICACION_LABELS, CAUSAL_LABELS, CAUSAL_DESCRIPTIONS, EMPRESAS, AREAS
 } from "../../constants";
@@ -364,6 +364,7 @@ export default function ActaCreatePage() {
   const navigate = useNavigate();
   const editingActa = id ? actas.find((acta) => acta.id === id) : undefined;
   const isEditing = !!editingActa;
+  const isReturnedForAdjustments = editingActa?.status === "devuelta_ajustes";
 
   const [currentStep, setCurrentStep] = useState(0);
   const [completedSteps, setCompletedSteps] = useState<number[]>([]);
@@ -386,7 +387,9 @@ export default function ActaCreatePage() {
   const [showMaterialWarningModal, setShowMaterialWarningModal] = useState(false);
   const [materialNotice, setMaterialNotice] = useState("");
   const [materials, setMaterials] = useState<ActaMaterial[]>([]);
+  const [removeMaterialIndex, setRemoveMaterialIndex] = useState<number | null>(null);
   const [materialPage, setMaterialPage] = useState(0);
+  const [editingMaterialIndex, setEditingMaterialIndex] = useState<number | null>(null);
   const [summaryMaterialPage, setSummaryMaterialPage] = useState(0);
   const [costoNoAplica, setCostoNoAplica] = useState(false);
   const [isSendingApproval, setIsSendingApproval] = useState(false);
@@ -397,7 +400,7 @@ export default function ActaCreatePage() {
   const [cecoSearch, setCecoSearch] = useState("");
   const [showCecoModal, setShowCecoModal] = useState(false);
   const isAreaFixed = user?.rol === "solicitante" && !!user?.area;
-  const isGeneralInfoLocked = isEditing;
+  const isGeneralInfoLocked = isEditing && !isReturnedForAdjustments;
 
   useEffect(() => {
     api.getCecos().then((data: unknown) => {
@@ -481,10 +484,11 @@ export default function ActaCreatePage() {
     } else {
       setMaterials([]);
     }
+    const currentEconomicMaterial = existingMaterials[existingMaterials.length - 1];
     form3.reset({
-      pesoKg: editingActa.pesoKg,
-      cantidadUnidades: editingActa.cantidadUnidades,
-      costoDestruccion: editingActa.costoDestruccion,
+      pesoKg: currentEconomicMaterial?.pesoKg ?? editingActa.pesoKg,
+      cantidadUnidades: currentEconomicMaterial?.cantidadUnidades ?? editingActa.cantidadUnidades,
+      costoDestruccion: currentEconomicMaterial?.costoUnitario ?? editingActa.costoDestruccion,
     });
     setCostoNoAplica(Number(editingActa.costoDestruccion) === 0);
     setFormData({
@@ -720,10 +724,8 @@ export default function ActaCreatePage() {
   };
 
   const onStep1 = form1.handleSubmit((data) => {
-    if (!isEditing) {
-      setFormData((prev) => ({ ...prev, ...data }));
-      setSelectedEmpresa(data.empresa);
-    }
+    setFormData((prev) => ({ ...prev, ...data }));
+    setSelectedEmpresa(data.empresa);
     setCompletedSteps((prev) => [...new Set([...prev, 0])]);
     setCurrentStep(1);
   });
@@ -829,10 +831,13 @@ export default function ActaCreatePage() {
   const addMaterial = (data: Step2Data, economicData: Step3Data) => {
     const newMaterial = materialFromData(data, economicData);
     setMaterials((current) => {
-      const next = [...current, newMaterial];
-      setMaterialPage(Math.max(next.length - 1, 0));
+      const next = editingMaterialIndex == null
+        ? [...current, newMaterial]
+        : current.map((material, index) => index === editingMaterialIndex ? newMaterial : material);
+      setMaterialPage(editingMaterialIndex == null ? Math.max(next.length - 1, 0) : editingMaterialIndex);
       return next;
     });
+    setEditingMaterialIndex(null);
     setFormData((previous) => ({
       ...previous,
       ...data,
@@ -860,6 +865,40 @@ export default function ActaCreatePage() {
     setSapCodes([]);
     setMaterialNotice("Producto finalizado y agregado. Puede agregar otro producto o continuar.");
     setCurrentStep(2);
+  };
+
+  const editMaterial = (index: number) => {
+    const material = materials[index];
+    if (!material) return;
+    setEditingMaterialIndex(index);
+    form2.reset({
+      descripcion: material.descripcion,
+      codigoSAP: material.codigoSAP,
+      numeroLote: material.numeroLote,
+      ordenProduccion: material.ordenProduccion,
+      sustanciaControlada: material.sustanciaControlada,
+      clasificacion: normalizeClassification(material.clasificacion) as Step2Data["clasificacion"],
+      fechaVencimiento: material.fechaVencimiento?.slice(0, 10) || "",
+      registroINVIMA: material.registroINVIMA,
+      estadoInvima: material.estadoInvima || "N/A",
+      tipoMaterial: material.tipoMaterial,
+      invimaProductId: material.invimaProductId,
+      sapCodeId: material.sapCodeId,
+    });
+    form3.reset({
+      pesoKg: material.pesoKg ?? 0,
+      cantidadUnidades: material.cantidadUnidades ?? 0,
+      costoDestruccion: material.costoUnitario ?? 0,
+    });
+    setCostoNoAplica(Number(material.costoUnitario || 0) === 0);
+    setMaterialPage(index);
+    setCurrentStep(2);
+    setMaterialNotice("Está editando este producto. Finalícelo para guardar los cambios.");
+    requestAnimationFrame(() => {
+      const firstMaterialField = document.getElementById("material-registro-invima");
+      firstMaterialField?.scrollIntoView({ behavior: "smooth", block: "center" });
+      (firstMaterialField as HTMLInputElement | null)?.focus();
+    });
   };
 
   const finalizeCurrentMaterial = (economicData: Step3Data) => {
@@ -1096,7 +1135,7 @@ export default function ActaCreatePage() {
 
       {/* Step 1: General Info */}
       {currentStep === 0 && (
-        <div className="bg-white rounded-xl border border-slate-200 p-6">
+        <div id="material-info-start" className="bg-white rounded-xl border border-slate-200 p-6">
           <h2 className="text-base font-semibold text-slate-800 mb-5">Paso 1 — Información General</h2>
           <form onSubmit={onStep1} noValidate className="space-y-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -1379,7 +1418,7 @@ export default function ActaCreatePage() {
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">Código INVIMA *</label>
               <div className="flex flex-col gap-2 sm:flex-row">
-                <input {...form2.register("registroINVIMA", { onBlur: (event) => autoSelectMaterial(event.target.value) })} placeholder="Código INVIMA o N/A" className="min-w-0 flex-1 px-3 py-2.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                <input id="material-registro-invima" {...form2.register("registroINVIMA", { onBlur: (event) => autoSelectMaterial(event.target.value) })} placeholder="Código INVIMA o N/A" className="min-w-0 flex-1 px-3 py-2.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
                 <div className="flex gap-2">
                   <button type="button" onClick={() => setShowInvimaModal(true)} className="flex flex-1 items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm font-medium text-slate-700 hover:border-blue-500 hover:text-blue-700 sm:flex-none" title="Buscar información en el maestro"><Search size={16} /> Buscar</button>
                   <button type="button" onClick={setInvimaNotApplicable} className={`flex-1 rounded-lg border px-3 py-2.5 text-sm font-medium sm:flex-none ${invimaNotApplicable ? "border-amber-500 bg-amber-50 text-amber-800" : "border-slate-300 bg-white text-slate-700 hover:border-amber-500 hover:text-amber-700"}`}>No aplica</button>
@@ -1568,19 +1607,18 @@ export default function ActaCreatePage() {
                       </div>
 
                       <div className="flex justify-end">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setMaterials((current) => {
-                              const next = current.filter((_, materialIndex) => materialIndex !== materialPage);
-                              setMaterialPage((previous) => Math.min(previous, Math.max(next.length - 1, 0)));
-                              return next;
-                            });
-                          }}
-                          className="text-sm font-medium text-red-600 hover:text-red-800"
-                        >
-                          Quitar este material
-                        </button>
+                        <div className="flex items-center gap-3">
+                          <button type="button" onClick={() => editMaterial(materialPage)} className="text-sm font-medium text-blue-700 hover:text-blue-900">
+                            Editar producto
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setRemoveMaterialIndex(materialPage)}
+                            className="text-sm font-medium text-red-600 hover:text-red-800"
+                          >
+                            Quitar material
+                          </button>
+                        </div>
                       </div>
                     </div>
                   );
@@ -1590,6 +1628,24 @@ export default function ActaCreatePage() {
           </div>
         </div>
       )}
+
+      <ConfirmModal
+        open={removeMaterialIndex !== null}
+        onClose={() => setRemoveMaterialIndex(null)}
+        onConfirm={() => {
+          if (removeMaterialIndex === null) return;
+          setMaterials((current) => {
+            const next = current.filter((_, materialIndex) => materialIndex !== removeMaterialIndex);
+            setMaterialPage((previous) => Math.min(previous, Math.max(next.length - 1, 0)));
+            return next;
+          });
+          setRemoveMaterialIndex(null);
+        }}
+        title="Quitar material"
+        message="¿Está seguro de que desea quitar este material?"
+        confirmLabel="Quitar"
+        danger
+      />
 
       {/* Step 3: Economic Info */}
       {currentStep === 3 && (

@@ -22,16 +22,16 @@ interface NavItem {
 }
 
 const NAV_ITEMS: NavItem[] = [
-  { to: "/dashboard", label: "Dashboard", icon: <LayoutDashboard size={18} />, roles: ["administrador", "solicitante", "aprobador_area", "costos", "hse", "planeacion"] },
+  { to: "/dashboard", label: "Dashboard", icon: <LayoutDashboard size={18} />, roles: ["administrador", "solicitante", "aprobador_area", "hse"] },
   { to: "/perfil", label: "Mi perfil", icon: <UserCircle2 size={18} />, roles: ["administrador", "solicitante", "aprobador_area", "costos", "hse", "planeacion"] },
-  { to: "/actas", label: "Ver actas", icon: <FileText size={18} />, roles: ["administrador", "solicitante", "aprobador_area", "costos", "hse", "planeacion"] },
+  { to: "/actas", label: "Ver actas", icon: <FileText size={18} />, roles: ["administrador", "solicitante", "aprobador_area", "hse"] },
   { to: "/actas/nueva", label: "Nueva Acta", icon: <FilePlus size={18} />, roles: ["solicitante"] },
-  { to: "/aprobaciones", label: "Pendientes de Aprobación", icon: <ClipboardCheck size={18} />, roles: ["aprobador_area", "costos", "hse"] },
+  { to: "/aprobaciones", label: "Pendientes de Aprobación", icon: <ClipboardCheck size={18} />, roles: ["aprobador_area", "hse"] },
   { to: "/usuarios", label: "Gestión de Usuarios", icon: <Users size={18} />, roles: ["administrador"] },
   { to: "/maestros/cecos", label: "Maestro CeCos", icon: <Building2 size={18} />, roles: ["costos"] },
   { to: "/maestros/invima", label: "Maestro unificado", icon: <Package size={18} />, roles: ["planeacion"] },
-  { to: "/reportes", label: "Reportes", icon: <BarChart3 size={18} />, roles: ["administrador", "aprobador_area", "costos", "hse", "planeacion"] },
-  { to: "/busqueda", label: "Búsqueda Global", icon: <Search size={18} />, roles: ["administrador", "solicitante", "aprobador_area", "costos", "hse", "planeacion"] },
+  { to: "/reportes", label: "Reportes", icon: <BarChart3 size={18} />, roles: ["administrador", "aprobador_area", "hse"] },
+  { to: "/busqueda", label: "Búsqueda Global", icon: <Search size={18} />, roles: ["administrador", "solicitante", "aprobador_area", "hse"] },
 ];
 
 const THEME_KEY = "add-theme";
@@ -175,7 +175,7 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps) {
           </NavLink>
         ))}
 
-        <NavLink
+        {user.rol !== "costos" && user.rol !== "planeacion" && <NavLink
           to="/notificaciones"
           title={collapsed ? "Notificaciones" : undefined}
           className={({ isActive }) =>
@@ -200,7 +200,7 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps) {
               {unread > 9 ? "9+" : unread}
             </span>
           )}
-        </NavLink>
+        </NavLink>}
       </nav>
 
       {/* Interruptor de modo claro/oscuro */}

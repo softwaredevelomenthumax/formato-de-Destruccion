@@ -4,7 +4,7 @@ import { Bell, CheckCheck, Eye, Trash2 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import { useApp } from "../../context/AppContext";
 import { EmptyState } from "../../components/ui/EmptyState";
-import { Modal } from "../../components/ui/Modal";
+import { ConfirmModal, Modal } from "../../components/ui/Modal";
 import { formatDistanceToNow } from "date-fns";
 import { es } from "date-fns/locale";
 import { toast } from "sonner";
@@ -21,6 +21,7 @@ export default function NotificationsPage() {
   const { actas, getUserNotifications, markNotificationRead, deleteNotification, markAllNotificationsRead } = useApp();
   const navigate = useNavigate();
   const [selectedNotification, setSelectedNotification] = useState<typeof notifications[0] | null>(null);
+  const [deleteNotificationId, setDeleteNotificationId] = useState<string | null>(null);
 
   if (!user) return null;
 
@@ -130,7 +131,7 @@ export default function NotificationsPage() {
                   </div>
                   <div className="flex shrink-0 items-center gap-1 pt-0.5">
                     {!n.read && <button onClick={(e) => { e.stopPropagation(); markNotificationRead(n.id); }} className="p-1 text-slate-400 hover:text-blue-600" title="Marcar como leído"><Eye size={14} /></button>}
-                    <button onClick={(e) => { e.stopPropagation(); handleDelete(n.id); }} className="p-1 text-slate-400 hover:text-red-600" title="Eliminar notificación"><Trash2 size={14} /></button>
+                    <button onClick={(e) => { e.stopPropagation(); setDeleteNotificationId(n.id); }} className="p-1 text-slate-400 hover:text-red-600" title="Eliminar notificación"><Trash2 size={14} /></button>
                   </div>
                 </div>
               );
@@ -138,6 +139,18 @@ export default function NotificationsPage() {
           </div>
         )}
       </div>
+      <ConfirmModal
+        open={!!deleteNotificationId}
+        onClose={() => setDeleteNotificationId(null)}
+        onConfirm={() => {
+          if (deleteNotificationId) void handleDelete(deleteNotificationId);
+          setDeleteNotificationId(null);
+        }}
+        title="Eliminar notificación"
+        message="¿Está seguro de que desea eliminar esta notificación?"
+        confirmLabel="Eliminar"
+        danger
+      />
     </div>
   );
 }
