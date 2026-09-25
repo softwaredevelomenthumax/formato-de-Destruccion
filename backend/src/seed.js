@@ -19,7 +19,7 @@ async function seed() {
     // Crear tablas
     await initializeDatabase();
 
-    // Insertar usuarios de prueba
+    // Crear únicamente las cuentas administrativas iniciales.
     const users = [
       {
         username: 'admin',
@@ -30,46 +30,22 @@ async function seed() {
         rol: 'administrador'
       },
       {
-        username: 'jperez',
-        password: 'pass123',
-        nombre: 'Juan Pérez',
-        email: 'jperez@humax.com',
-        area: 'Operaciones',
-        rol: 'solicitante'
-      },
-      {
-        username: 'hgarces',
-        password: 'pass123',
-        nombre: 'Héctor Garcés',
-        email: 'hgarces@humax.com',
-        area: 'HSE',
-        rol: 'hse'
-      },
-      {
-        username: 'mgomez',
-        password: 'pass123',
-        nombre: 'María Gómez',
-        email: 'mgomez@humax.com',
-        area: 'Calidad',
-        rol: 'aprobador_area'
-      },
-      {
-        username: 'mrevelo',
-        password: 'pass123',
-        nombre: 'Miguel Revelo',
-        email: 'mrevelo@humax.com',
-        area: 'Finanzas',
-        rol: 'costos'
-      },
-      {
-        username: 'agutierrez',
-        password: 'pass123',
-        nombre: 'Ana Gutiérrez',
-        email: 'agutierrez@humax.com',
-        area: 'Planeación',
-        rol: 'planeacion'
+        username: 'admin_global',
+        password: 'adminGlobal123',
+        nombre: 'Administrador Global',
+        email: 'admin.global@humax.com',
+        area: 'TI',
+        rol: 'admin_global'
       }
     ];
+
+    await pool.request().query(`
+      DELETE FROM notifications
+      WHERE userId IN (SELECT id FROM users WHERE username IN ('jperez', 'hgarces', 'mgomez', 'mrevelo', 'agutierrez'));
+      DELETE u FROM users u
+      WHERE u.username IN ('jperez', 'hgarces', 'mgomez', 'mrevelo', 'agutierrez')
+        AND NOT EXISTS (SELECT 1 FROM actas a WHERE a.solicitanteId = u.id);
+    `);
 
     console.log('👤 Creando usuarios de prueba...');
     for (const user of users) {
@@ -144,11 +120,7 @@ async function seed() {
     console.log('\n✅ Base de datos lista para usar\n');
     console.log('🔐 Credenciales de prueba:');
     console.log('   Usuario: admin       | Contraseña: admin123        | Rol: administrador');
-    console.log('   Usuario: jperez      | Contraseña: pass123         | Rol: solicitante');
-    console.log('   Usuario: hgarces     | Contraseña: pass123         | Rol: hse');
-    console.log('   Usuario: mgomez      | Contraseña: pass123         | Rol: aprobador_area');
-    console.log('   Usuario: mrevelo     | Contraseña: pass123         | Rol: costos');
-    console.log('   Usuario: agutierrez  | Contraseña: pass123         | Rol: planeacion\n');
+    console.log('   Usuario: admin_global | Contraseña: adminGlobal123 | Rol: admin_global\n');
 
     await closeDatabase();
   } catch (error) {

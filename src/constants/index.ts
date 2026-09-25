@@ -8,6 +8,7 @@ import type {
 
 export const ROLE_LABELS: Record<Role, string> = {
   administrador: "Administrador",
+  admin_global: "Administrador global",
   solicitante: "Solicitante",
   aprobador_area: "Aprobador de Área",
   costos: "Costos",
@@ -222,6 +223,7 @@ export const AREAS = [
   "I+D",
   "Logística",
   "Compras",
+  "TI",
 ];
 
 export const CAUSAL_DEVOLUCION_OPTIONS = [

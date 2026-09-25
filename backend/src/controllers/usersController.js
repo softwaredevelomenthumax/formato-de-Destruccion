@@ -75,6 +75,9 @@ export async function updateUser(req, res) {
   try {
     const { id } = req.params;
     const { nombre, email, area, rol, status, password } = req.body;
+    if (password && req.user.rol !== 'admin_global') {
+      return res.status(403).json({ error: 'Solo el administrador global puede cambiar contraseñas' });
+    }
     const pool = getPool();
 
     const existing = await pool.request().input('id', id).query('SELECT id FROM users WHERE id = @id');

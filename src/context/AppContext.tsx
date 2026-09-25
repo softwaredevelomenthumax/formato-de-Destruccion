@@ -72,25 +72,6 @@ function asBoolean(value: unknown): boolean {
   return false;
 }
 
-const COSTOS_REVIEW_THRESHOLD = 500000;
-
-function requiresCostos(acta: Partial<Acta>): boolean {
-  const { clasificacion, fechaVencimiento, causal, costoDestruccion } = acta;
-  const costo = Number(costoDestruccion);
-  if (Number.isFinite(costo) && costo >= COSTOS_REVIEW_THRESHOLD) return true;
-  if (!fechaVencimiento) return false;
-  const venc = new Date(fechaVencimiento);
-  const now = new Date();
-  const diffMs = venc.getTime() - now.getTime();
-  const diffMonths = diffMs / (1000 * 60 * 60 * 24 * 30);
-
-  if (clasificacion === "producto_terminado" && diffMonths < 12) return true;
-  if (clasificacion === "materia_prima" && diffMonths < 6) return true;
-  if (clasificacion === "material_empaque") return true;
-  if (causal === "dano_operativo" || causal === "producto_no_conforme") return true;
-  return false;
-}
-
 export function AppProvider({ children }: { children: ReactNode }) {
   const { token, user } = useAuth();
   const [users, setUsers] = useState<User[]>([]);
@@ -212,7 +193,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // Actas
   const createActa = async (acta: Omit<Acta, "id" | "consecutivo" | "createdAt" | "updatedAt" | "historial" | "aprobaciones" | "requiereCostos">): Promise<Acta> => {
     try {
-      const rc = requiresCostos(acta);
+      const rc = false;
       const newActa = await api.createActa({ ...acta, requiereCostos: rc });
       setActas((current) => [...asArray<Acta>(current), newActa]);
       return newActa;
@@ -249,7 +230,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const newStatus: ActaStatus = "pendiente_aprobacion_area";
       if (!acta) throw new Error("No se encontró el acta para enviarla a aprobación");
 
-      const rc = requiresCostos(acta);
+      const rc = false;
       await api.submitActa(id, { requiereCostos: rc });
       setActas((current) => asArray<Acta>(current).map((currentActa) =>
         currentActa.id === id ? { ...currentActa, status: newStatus, requiereCostos: rc } : currentActa
@@ -306,7 +287,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       );
 
       if (paso === "area") {
-        nextStatus = acta.requiereCostos ? "pendiente_costos" : "pendiente_hse";
+        nextStatus = "pendiente_hse";
       } else if (paso === "costos") {
         nextStatus = "pendiente_hse";
       } else if (paso === "hse") {

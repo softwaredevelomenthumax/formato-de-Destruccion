@@ -1,4 +1,4 @@
-import { Outlet, Navigate } from "react-router";
+import { Outlet, Navigate, useLocation } from "react-router";
 import { Sidebar } from "./Sidebar";
 import { Header } from "./Header";
 import { useAuth } from "../../context/AuthContext";
@@ -6,9 +6,16 @@ import { Toaster } from "sonner";
 import { useState } from "react";
 
 export function AppLayout() {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, user } = useAuth();
+  const location = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   if (!isAuthenticated) return <Navigate to="/login" replace />;
+  if (user?.rol === "costos" && location.pathname !== "/maestros/cecos") {
+    return <Navigate to="/maestros/cecos" replace />;
+  }
+  if (user?.rol === "administrador" && !["/actas", "/usuarios"].some((path) => location.pathname === path || location.pathname.startsWith(`${path}/`))) {
+    return <Navigate to="/actas" replace />;
+  }
 
   return (
     <div className="flex h-screen min-w-0 overflow-hidden bg-slate-50">

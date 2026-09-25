@@ -8,6 +8,7 @@ import { EmptyState } from "../../components/ui/EmptyState";
 import { ROLE_LABELS, AREAS } from "../../constants";
 import type { Role, UserStatus, User } from "../../types";
 import { toast } from "sonner";
+import { useAuth } from "../../context/AuthContext";
 
 const STATUS_BADGE: Record<UserStatus, { label: string; variant: "success" | "warning" | "error" | "muted" }> = {
   activo: { label: "Activo", variant: "success" },
@@ -18,6 +19,8 @@ const STATUS_BADGE: Record<UserStatus, { label: string; variant: "success" | "wa
 
 export default function UserManagementPage() {
   const { users, solicitudes, updateUser, deleteUser, createUser, approveSolicitud, rejectSolicitud } = useApp();
+  const { user: currentUser } = useAuth();
+  const isGlobalAdmin = currentUser?.rol === "admin_global";
 
   const [search, setSearch] = useState("");
   const [rolFilter, setRolFilter] = useState<Role | "">("");
@@ -44,15 +47,15 @@ export default function UserManagementPage() {
       toast.success("Usuario actualizado");
     } else {
       await createUser({ username: form.username, password: form.password, nombre: form.nombre, area: form.area, rol: form.rol, email: form.email || undefined, status: form.status });
-      toast.success("Usuario creado. Contraseña: " + form.password);
+      toast.success("Usuario creado correctamente");
     }
     setEditUser(null);
     setCreateModalOpen(false);
     setForm({ nombre: "", username: "", password: "Humax2024*", area: "", rol: "solicitante", email: "", status: "activo" });
   };
 
-  const handleDelete = (id: string) => {
-    const ok = deleteUser(id);
+  const handleDelete = async (id: string) => {
+    const ok = await deleteUser(id);
     if (ok) toast.success("Usuario eliminado");
     else toast.error("No se puede eliminar: el usuario tiene actas activas");
     setDeleteConfirm(null);
@@ -60,7 +63,7 @@ export default function UserManagementPage() {
 
   const openEdit = (u: User) => {
     setEditUser(u);
-    setForm({ nombre: u.nombre, username: u.username, password: u.password, area: u.area, rol: u.rol, email: u.email || "", status: u.status });
+    setForm({ nombre: u.nombre, username: u.username, password: "", area: u.area, rol: u.rol, email: u.email || "", status: u.status });
     setCreateModalOpen(true);
   };
 
@@ -182,10 +185,10 @@ export default function UserManagementPage() {
                               className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors" title={u.status === "activo" ? "Desactivar" : "Activar"}>
                               {u.status === "activo" ? <ToggleRight size={16} /> : <ToggleLeft size={16} />}
                             </button>
-                            <button onClick={() => { updateUser(u.id, { password: "Reset2024*" }); toast.success("Contraseña restablecida: Reset2024*"); }}
+                            {isGlobalAdmin && <button onClick={() => { updateUser(u.id, { password: "Reset2024*" }); toast.success("Contraseña restablecida"); }}
                               className="p-1.5 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded transition-colors" title="Restablecer contraseña">
                               <Key size={15} />
-                            </button>
+                            </button>}
                             <button onClick={() => openEdit(u)} className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors" title="Editar">
                               <Edit2 size={15} />
                             </button>
@@ -227,7 +230,7 @@ export default function UserManagementPage() {
                       <button onClick={() => { rejectSolicitud(s.id); toast.success("Solicitud rechazada"); }} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-red-600 border border-red-200 rounded-lg hover:bg-red-50">
                         <XCircle size={13} /> Rechazar
                       </button>
-                      <button onClick={() => { approveSolicitud(s.id); toast.success("Usuario aprobado. Contraseña: Humax2024*"); }} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-green-600 text-white rounded-lg hover:bg-green-700">
+                      <button onClick={() => { approveSolicitud(s.id); toast.success("Usuario aprobado"); }} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-green-600 text-white rounded-lg hover:bg-green-700">
                         <CheckCircle size={13} /> Aprobar
                       </button>
                     </div>

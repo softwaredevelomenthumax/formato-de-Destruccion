@@ -49,14 +49,14 @@ export default function ActaListPage() {
   const totalPages = Math.ceil(visibleActas.length / PAGE_SIZE);
   const pageActas = visibleActas.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
-  const handleDelete = (id: string) => {
-    const ok = deleteActa(id);
+  const handleDelete = async (id: string) => {
+    const ok = await deleteActa(id);
     if (ok) toast.success("Acta eliminada correctamente");
     else toast.error("No se puede eliminar esta acta");
     setDeleteId(null);
   };
 
-  const canDelete = (status: ActaStatus) => user?.rol === "administrador" && status !== "cerrada";
+  const canDelete = () => user?.rol === "admin_global";
   return (
     <div className="space-y-5">
       <div className="flex items-center justify-between">
@@ -136,7 +136,7 @@ export default function ActaListPage() {
                         >
                           <Eye size={15} />
                         </button>
-                        {canDelete(acta.status) && (
+                        {canDelete() && (
                           <button
                             onClick={() => setDeleteId(acta.id)}
                             className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"

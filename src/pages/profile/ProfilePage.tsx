@@ -11,6 +11,7 @@ export default function ProfilePage() {
   const { user, updateCurrentUser } = useAuth();
   const { updateUser } = useApp();
   const isSolicitante = user?.rol === "solicitante";
+  const canChangePasswords = user?.rol === "admin_global";
   const [isEditing, setIsEditing] = useState(false);
   const [form, setForm] = useState({
     nombre: user?.nombre ?? "",
@@ -81,6 +82,11 @@ export default function ProfilePage() {
   const handleSave = async () => {
     if (isSolicitante) {
       toast.error("Los solicitantes no pueden editar la información del perfil");
+      return;
+    }
+
+    if ((form.password || form.confirmPassword) && !canChangePasswords) {
+      toast.error("Este administrador no puede cambiar contraseñas");
       return;
     }
 
@@ -213,7 +219,7 @@ export default function ProfilePage() {
 
           {!isSolicitante && isEditing ? (
             <div className="mt-6 space-y-4">
-              <div className="grid gap-4 md:grid-cols-2">
+              {canChangePasswords && <div className="grid gap-4 md:grid-cols-2">
                 <div>
                   <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">Nueva contraseña</label>
                   <input
@@ -234,7 +240,7 @@ export default function ProfilePage() {
                     className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
                   />
                 </div>
-              </div>
+              </div>}
 
               <div className="flex justify-end gap-3">
                 <button

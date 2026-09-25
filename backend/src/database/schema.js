@@ -251,6 +251,23 @@ export async function initializeDatabase() {
         ALTER TABLE cecos ADD CONSTRAINT UQ_cecos_empresa_ceco UNIQUE (empresaCode, ceco);
     `);
 
+    // El rol Costos ya no participa en la aprobación de actas. Desbloquear
+    // registros que quedaron esperando ese paso y entregarlos a HSE.
+    await pool.request().query(`
+      BEGIN TRANSACTION;
+
+      UPDATE acta_aprobaciones
+      SET status = 'no_aplica', aprobador = NULL, comentario = NULL
+      WHERE paso = 'costos'
+        AND actaId IN (SELECT id FROM actas WHERE status = 'pendiente_costos');
+
+      UPDATE actas
+      SET status = 'pendiente_hse', requiereCostos = 0, updatedAt = GETDATE()
+      WHERE status = 'pendiente_costos';
+
+      COMMIT TRANSACTION;
+    `);
+
     console.log('✓ Tablas creadas exitosamente');
   } catch (error) {
     console.error('Error inicializando base de datos:', error.message);

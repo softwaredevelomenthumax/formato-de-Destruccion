@@ -312,12 +312,38 @@ export async function deleteActa(req, res) {
   try {
     const { id } = req.params;
     const pool = getPool();
+    const actaResult = await pool.request().input('id', id).query('SELECT * FROM actas WHERE id = @id');
+    const acta = actaResult.recordset[0];
+    if (!acta) return res.status(404).json({ error: 'Acta no encontrada' });
+
+    const involvedResult = await pool.request()
+      .input('solicitanteId', acta.solicitanteId)
+      .input('solicitanteNombre', acta.solicitanteNombre)
+      .input('responsable', acta.responsable)
+      .input('actaId', id)
+      .query(`SELECT id, nombre, email FROM users
+        WHERE status = 'activo' AND email IS NOT NULL AND email <> ''
+          AND (id = @solicitanteId OR nombre IN (@solicitanteNombre, @responsable)
+            OR EXISTS (SELECT 1 FROM acta_aprobaciones aa
+              WHERE aa.actaId = @actaId AND (aa.aprobador = users.nombre OR aa.aprobador = users.username)))`);
+    const globalAdminsResult = await pool.request()
+      .query("SELECT id, nombre, email FROM users WHERE rol IN ('admin_global', 'administrador_global', 'global_admin') AND status = 'activo' AND email IS NOT NULL AND email <> ''");
 
     // Eliminar historial y aprobaciones primero
     await pool.request().input('actaId', id).query('DELETE FROM acta_historial WHERE actaId = @actaId');
     await pool.request().input('actaId', id).query('DELETE FROM acta_aprobaciones WHERE actaId = @actaId');
     await pool.request().input('actaId', id).query('DELETE FROM acta_materiales WHERE actaId = @actaId');
+    await pool.request().input('actaId', id).query('DELETE FROM notifications WHERE actaId = @actaId');
     await pool.request().input('id', id).query('DELETE FROM actas WHERE id = @id');
+
+    const recipients = new Map([...involvedResult.recordset, ...globalAdminsResult.recordset].map((recipient) => [recipient.email, recipient]));
+    await Promise.allSettled([...recipients.values()].map((recipient) => sendNotificationEmail({
+      to: recipient.email,
+      recipientName: recipient.nombre,
+      title: `Acta ${acta.consecutivo} eliminada`,
+      message: `El acta ${acta.consecutivo} fue eliminada por el administrador global.`,
+      actaId: acta.consecutivo,
+    })));
 
     res.json({ message: 'Acta eliminada' });
   } catch (error) {

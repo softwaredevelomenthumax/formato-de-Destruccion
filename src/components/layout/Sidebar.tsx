@@ -22,16 +22,16 @@ interface NavItem {
 }
 
 const NAV_ITEMS: NavItem[] = [
-  { to: "/dashboard", label: "Dashboard", icon: <LayoutDashboard size={18} />, roles: ["administrador", "solicitante", "aprobador_area", "hse"] },
-  { to: "/perfil", label: "Mi perfil", icon: <UserCircle2 size={18} />, roles: ["administrador", "solicitante", "aprobador_area", "costos", "hse", "planeacion"] },
-  { to: "/actas", label: "Ver actas", icon: <FileText size={18} />, roles: ["administrador", "solicitante", "aprobador_area", "hse"] },
+  { to: "/dashboard", label: "Dashboard", icon: <LayoutDashboard size={18} />, roles: ["administrador", "admin_global", "solicitante", "aprobador_area", "hse"] },
+  { to: "/perfil", label: "Mi perfil", icon: <UserCircle2 size={18} />, roles: ["administrador", "admin_global", "solicitante", "aprobador_area", "hse", "planeacion"] },
+  { to: "/actas", label: "Ver actas", icon: <FileText size={18} />, roles: ["administrador", "admin_global", "solicitante", "aprobador_area", "hse"] },
   { to: "/actas/nueva", label: "Nueva Acta", icon: <FilePlus size={18} />, roles: ["solicitante"] },
   { to: "/aprobaciones", label: "Pendientes de Aprobación", icon: <ClipboardCheck size={18} />, roles: ["aprobador_area", "hse"] },
-  { to: "/usuarios", label: "Gestión de Usuarios", icon: <Users size={18} />, roles: ["administrador"] },
+  { to: "/usuarios", label: "Gestión de Usuarios", icon: <Users size={18} />, roles: ["administrador", "admin_global"] },
   { to: "/maestros/cecos", label: "Maestro CeCos", icon: <Building2 size={18} />, roles: ["costos"] },
   { to: "/maestros/invima", label: "Maestro unificado", icon: <Package size={18} />, roles: ["planeacion"] },
-  { to: "/reportes", label: "Reportes", icon: <BarChart3 size={18} />, roles: ["administrador", "aprobador_area", "hse"] },
-  { to: "/busqueda", label: "Búsqueda Global", icon: <Search size={18} />, roles: ["administrador", "solicitante", "aprobador_area", "hse"] },
+  { to: "/reportes", label: "Reportes", icon: <BarChart3 size={18} />, roles: ["admin_global", "aprobador_area", "hse"] },
+  { to: "/busqueda", label: "Búsqueda Global", icon: <Search size={18} />, roles: ["admin_global", "solicitante", "aprobador_area", "hse"] },
 ];
 
 const THEME_KEY = "add-theme";
@@ -166,7 +166,7 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps) {
                 {unread > 9 ? "9+" : unread}
               </span>
             )}
-            {!collapsed && item.to === "/usuarios" && pendingSolicitudes > 0 && user.rol === "administrador" && (
+            {!collapsed && item.to === "/usuarios" && pendingSolicitudes > 0 && ["administrador", "admin_global"].includes(user.rol) && (
               <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-amber-500 px-1 text-xs font-bold text-white">
                 {pendingSolicitudes}
               </span>

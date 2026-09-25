@@ -31,8 +31,11 @@ router.post('/login', async (req, res) => {
       return res.status(401).json({ error: 'Usuario o contraseña inválidos' });
     }
 
+    const role = ['administrador_global', 'global_admin'].includes(String(user.rol).trim().toLowerCase())
+      ? 'admin_global'
+      : user.rol;
     const token = jwt.sign(
-      { id: user.id, username: user.username, rol: user.rol },
+      { id: user.id, username: user.username, rol: role },
       process.env.JWT_SECRET || 'secret',
       { expiresIn: process.env.JWT_EXPIRY || '7d' }
     );
@@ -45,7 +48,7 @@ router.post('/login', async (req, res) => {
         nombre: user.nombre,
         email: user.email,
         area: user.area,
-        rol: user.rol,
+        rol: role,
         status: user.status,
       },
     });

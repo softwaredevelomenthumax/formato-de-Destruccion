@@ -1,9 +1,9 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate, Link } from "react-router";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Eye, EyeOff, Shield, AlertCircle, ChevronDown, UserRound, Moon, Sun } from "lucide-react";
+import { Eye, EyeOff, Shield, AlertCircle, Moon, Sun } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import { toast } from "sonner";
 import { motion } from "framer-motion";
@@ -17,24 +17,13 @@ const schema = z.object({
 });
 type FormData = z.infer<typeof schema>;
 
-const TEST_USERS = [
-  { username: "admin", password: "admin123", role: "Administrador" },
-  { username: "jperez", password: "pass123", role: "Solicitante" },
-  { username: "hgarces", password: "pass123", role: "HSE" },
-  { username: "mgomez", password: "pass123", role: "Aprobador de área" },
-  { username: "mrevelo", password: "pass123", role: "Costos" },
-  { username: "agutierrez", password: "pass123", role: "Planeación" },
-];
-
 const THEME_KEY = "add-theme";
 
 export default function LoginPage() {
   const { login, isAuthenticated } = useAuth();
   const navigate = useNavigate();
   const [showPassword, setShowPassword] = useState(false);
-  const [showTestUsers, setShowTestUsers] = useState(false);
   const [authError, setAuthError] = useState("");
-  const testUsersRef = useRef<HTMLDivElement>(null);
   const [theme, setTheme] = useState<"light" | "dark">(() => {
     try {
       const stored = localStorage.getItem(THEME_KEY);
@@ -60,31 +49,13 @@ export default function LoginPage() {
     }
   }, [isAuthenticated, navigate]);
 
-  useEffect(() => {
-    const handleOutsideClick = (event: MouseEvent) => {
-      if (testUsersRef.current && !testUsersRef.current.contains(event.target as Node)) {
-        setShowTestUsers(false);
-      }
-    };
-
-    document.addEventListener("mousedown", handleOutsideClick);
-    return () => document.removeEventListener("mousedown", handleOutsideClick);
-  }, []);
-
-  const { register, setValue, handleSubmit, formState: { errors, isSubmitting } } = useForm<FormData>({
+  const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm<FormData>({
     resolver: zodResolver(schema),
     defaultValues: {
       username: "",
       password: "",
     },
   });
-
-  const selectTestUser = (username: string, password: string) => {
-    setValue("username", username, { shouldDirty: true, shouldValidate: true });
-    setValue("password", password, { shouldDirty: true, shouldValidate: true });
-    setAuthError("");
-    setShowTestUsers(false);
-  };
 
   const onSubmit = async (data: FormData) => {
     setAuthError("");
@@ -150,7 +121,7 @@ export default function LoginPage() {
         ))}
       </div>
 
-      <div ref={testUsersRef} className="absolute right-4 top-4 z-30 flex items-start gap-2">
+      <div className="absolute right-4 top-4 z-30 flex items-start gap-2">
         <button
           type="button"
           onClick={() => setTheme((current) => current === "dark" ? "light" : "dark")}
@@ -160,35 +131,6 @@ export default function LoginPage() {
         >
           {theme === "dark" ? <Sun size={16} /> : <Moon size={16} />}
         </button>
-        <button
-          type="button"
-          onClick={() => setShowTestUsers((visible) => !visible)}
-          className={`flex items-center gap-2 rounded-full border px-4 py-2 text-xs font-semibold shadow-sm backdrop-blur-sm transition-colors ${theme === "dark" ? "border-slate-500 bg-slate-950/90 text-slate-100 hover:border-slate-400 hover:bg-slate-800" : "border-blue-700/30 bg-blue-900/20 text-blue-950 hover:bg-blue-900/30"}`}
-          aria-expanded={showTestUsers}
-        >
-          <UserRound size={14} />
-          Usuarios de prueba
-          <ChevronDown size={14} className={`transition-transform ${showTestUsers ? "rotate-180" : ""}`} />
-        </button>
-
-        {showTestUsers && (
-          <div className="absolute right-0 mt-3 grid w-72 max-w-[calc(100vw-2rem)] gap-2 rounded-xl border border-slate-600/70 bg-slate-950/95 p-3 shadow-xl backdrop-blur-sm">
-            {TEST_USERS.map((testUser) => (
-              <button
-                key={testUser.username}
-                type="button"
-                onClick={() => selectTestUser(testUser.username, testUser.password)}
-                className="flex items-center justify-between rounded-lg px-3 py-2 text-left text-xs text-blue-100 transition-colors hover:bg-white/10"
-              >
-                <span>
-                  <span className="block font-semibold">{testUser.username}</span>
-                  <span className="text-blue-200/70">{testUser.role}</span>
-                </span>
-                <span className="font-mono text-blue-200/80">{testUser.password}</span>
-              </button>
-            ))}
-          </div>
-        )}
       </div>
 
       <div className="relative flex w-full flex-1 items-center justify-center py-8">

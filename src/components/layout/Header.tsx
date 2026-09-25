@@ -74,7 +74,7 @@ export function Header({ onMenuClick }: HeaderProps) {
       </nav>
 
       {/* Search bar */}
-      <form onSubmit={handleSearch} className="relative hidden md:block">
+      {user.rol !== "costos" && <form onSubmit={handleSearch} className="relative hidden md:block">
         <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
         <input
           type="text"
@@ -83,10 +83,10 @@ export function Header({ onMenuClick }: HeaderProps) {
           placeholder="Buscar actas, usuarios..."
           className="pl-8 pr-4 py-1.5 text-sm bg-slate-100 border border-transparent rounded-lg focus:outline-none focus:border-blue-300 focus:bg-white transition-all w-56 focus:w-72 placeholder:text-slate-400"
         />
-      </form>
+      </form>}
 
       {/* Notifications */}
-      <button
+      {user.rol !== "costos" && <button
         onClick={() => navigate("/notificaciones")}
         className="relative p-2 text-slate-500 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors"
         title="Notificaciones"
@@ -97,7 +97,7 @@ export function Header({ onMenuClick }: HeaderProps) {
             {unread > 9 ? "9+" : unread}
           </span>
         )}
-      </button>
+      </button>}
     </header>
   );
 }

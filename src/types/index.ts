@@ -1,5 +1,6 @@
 export type Role =
   | "administrador"
+  | "admin_global"
   | "solicitante"
   | "aprobador_area"
   | "costos"
@@ -53,7 +54,7 @@ export type CausalDestruccion =
 export interface User {
   id: string;
   username: string;
-  password: string;
+  password?: string;
   nombre: string;
   area: string;
   rol: Role;

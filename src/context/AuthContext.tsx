@@ -2,7 +2,7 @@ import { createContext, useContext, useState, useEffect, useCallback, type React
 import type { Role, User } from "../types";
 import { api } from "../services/api.ts";
 
-const VALID_ROLES: Role[] = ["administrador", "solicitante", "aprobador_area", "costos", "hse", "planeacion"];
+const VALID_ROLES: Role[] = ["administrador", "admin_global", "solicitante", "aprobador_area", "costos", "hse", "planeacion"];
 
 function normalizeRole(value: unknown): Role | null {
   if (typeof value !== "string") return null;
@@ -16,6 +16,8 @@ function normalizeRole(value: unknown): Role | null {
   const aliases: Record<string, Role> = {
     admin: "administrador",
     administrator: "administrador",
+    global_admin: "admin_global",
+    administrador_global: "admin_global",
   };
 
   return aliases[normalized] ?? (VALID_ROLES.includes(normalized as Role) ? normalized as Role : null);
