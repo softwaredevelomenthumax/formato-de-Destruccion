@@ -45,7 +45,7 @@ const MATERIAL_TYPE_OPTIONS = [
   { value: "ROH", classification: "MP", label: "ROH = Materia prima", meaning: "Materia prima: insumos y sustancias que se utilizan para fabricar el producto." },
   { value: "FERT", classification: "PT", label: "FERT = Producto terminado", meaning: "Producto terminado: producto listo para comercialización o entrega." },
   { value: "HALB", classification: "ST", label: "HALB = Semiterminado", meaning: "Semiterminado: material que requiere una etapa adicional antes de convertirse en producto terminado." },
-  { value: "VERP", classification: "ME", label: "VERP = Material de empaque", meaning: "Material de empaque: envases, etiquetas, bl?steres y otros materiales de acondicionamiento." },
+  { value: "VERP", classification: "ME", label: "VERP = Material de empaque", meaning: "Material de empaque: envases, etiquetas, blísteres y otros materiales de acondicionamiento." },
   { value: "UNBW", classification: "reactivos", label: "UNBW = Reactivo o material de laboratorio", meaning: "Reactivo o material de laboratorio: sustancias y materiales usados para análisis, control o referencia." },
   { value: "ZNBW", classification: "residuo_comun", label: "ZNBW = Residuos peligrosos comunes", meaning: "Residuos peligrosos comunes generados durante actividades operativas." },
   { value: "OTRO", classification: "otro", label: "Otro", meaning: "Tipo de material no incluido en las opciones anteriores." },

@@ -120,44 +120,44 @@ export const CAUSAL_DESCRIPTIONS: Record<
   { description: string; cuando: string; ejemplos: string[] }
 > = {
   material_vencido: {
-    description: "Material que super? su fecha de vencimiento o su tiempo permitido de almacenamiento.",
-    cuando: "Aplica cuando el material ya no puede utilizarse por su fecha o condici?n de almacenamiento.",
+    description: "Material que superó su fecha de vencimiento o su tiempo permitido de almacenamiento.",
+    cuando: "Aplica cuando el material ya no puede utilizarse por su fecha o condición de almacenamiento.",
     ejemplos: ["Materia prima vencida", "Material de empaque vencido", "Producto terminado vencido"],
   },
   producto_no_conforme: {
-    description: "Material que no cumple las especificaciones, requisitos de calidad, integridad o identificaci?n establecidos.",
-    cuando: "Aplica cuando una inspecci?n o evaluaci?n confirma que el material no cumple los criterios definidos.",
-    ejemplos: ["Materia prima fuera de especificaci?n", "Empaque con identificaci?n incorrecta", "Producto con defectos visibles"],
+    description: "Material que no cumple las especificaciones, requisitos de calidad, integridad o identificación establecidos.",
+    cuando: "Aplica cuando una inspección o evaluación confirma que el material no cumple los criterios definidos.",
+    ejemplos: ["Materia prima fuera de especificación", "Empaque con identificación incorrecta", "Producto con defectos visibles"],
   },
   residuos_proceso: {
-    description: "Residuos o sobrantes generados durante procesos de fabricaci?n, operaci?n, an?lisis o mantenimiento.",
+    description: "Residuos o sobrantes generados durante procesos de fabricación, operación, análisis o mantenimiento.",
     cuando: "Aplica cuando el residuo se genera como resultado de una actividad operativa y no puede reutilizarse.",
-    ejemplos: ["Sobrantes de producci?n", "Muestras de an?lisis", "Residuos de limpieza de equipos"],
+    ejemplos: ["Sobrantes de producción", "Muestras de análisis", "Residuos de limpieza de equipos"],
   },
   contaminacion: {
     description: "Material contaminado o mezclado accidentalmente con agentes o materiales que comprometen su uso seguro.",
-    cuando: "Aplica cuando el contacto o mezcla afecta la calidad, seguridad o disposici?n adecuada del material.",
-    ejemplos: ["Contaminaci?n cruzada", "Contacto con una sustancia externa", "Mezcla accidental de materiales"],
+    cuando: "Aplica cuando el contacto o mezcla afecta la calidad, seguridad o disposición adecuada del material.",
+    ejemplos: ["Contaminación cruzada", "Contacto con una sustancia externa", "Mezcla accidental de materiales"],
   },
   dano_operativo: {
-    description: "Material deteriorado durante su fabricaci?n, manipulaci?n, almacenamiento o transporte.",
+    description: "Material deteriorado durante su fabricación, manipulación, almacenamiento o transporte.",
     cuando: "Aplica cuando una falla o incidente operativo impide utilizar o recuperar el material.",
-    ejemplos: ["Material derramado", "Empaque roto durante transporte", "Da?o por falla de equipo"],
+    ejemplos: ["Material derramado", "Empaque roto durante transporte", "Daño por falla de equipo"],
   },
   remanentes: {
     description: "Restos, sobrantes o remanentes que no pueden recuperarse, aprovecharse ni reprocesarse.",
-    cuando: "Aplica cuando el material restante no tiene una alternativa segura de reutilizaci?n o recuperaci?n.",
-    ejemplos: ["Barridos de ?rea", "Sobrantes no recuperables", "Remanentes de una operaci?n"],
+    cuando: "Aplica cuando el material restante no tiene una alternativa segura de reutilización o recuperación.",
+    ejemplos: ["Barridos de área", "Sobrantes no recuperables", "Remanentes de una operación"],
   },
   producto_retirado: {
-    description: "Material retirado de uso, distribuci?n o mercado, o devuelto por un cliente y no apto para reutilizaci?n.",
+    description: "Material retirado de uso, distribución o mercado, o devuelto por un cliente y no apto para reutilización.",
     cuando: "Aplica cuando se determina que el material retirado o devuelto debe destruirse.",
-    ejemplos: ["Devoluci?n de cliente", "Retiro por alerta de calidad", "Material deteriorado en distribuci?n"],
+    ejemplos: ["Devolución de cliente", "Retiro por alerta de calidad", "Material deteriorado en distribución"],
   },
   otras: {
-    description: "Causal que no se ajusta a las categor?as anteriores. Requiere una justificaci?n detallada.",
-    cuando: "Aplica ?nicamente cuando ninguna de las otras causales describe adecuadamente el motivo.",
-    ejemplos: ["Material obsoleto por cambio de proceso", "Cambio de proveedor", "Otra raz?n documentada"],
+    description: "Causal que no se ajusta a las categorías anteriores. Requiere una justificación detallada.",
+    cuando: "Aplica únicamente cuando ninguna de las otras causales describe adecuadamente el motivo.",
+    ejemplos: ["Material obsoleto por cambio de proceso", "Cambio de proveedor", "Otra razón documentada"],
   },
 };
 

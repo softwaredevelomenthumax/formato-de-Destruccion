@@ -128,7 +128,21 @@ export async function sendNotificationEmail({ to, recipientName, title, message,
               <p style="margin:0 0 16px;color:#475569">${escapeHtml(intro)}</p>
               <div style="margin:0 0 18px;padding:16px 18px;border:1px solid #dbeafe;border-left:4px solid #2563eb;border-radius:8px;background:#f8fafc;color:#334155">${safeMessage}</div>
               ${cleanActaId ? `<div style="margin:0 0 24px;padding:14px 16px;border:1px solid #e2e8f0;border-radius:8px;background:#ffffff">${actaReference}</div>` : ''}
-              <p style="margin:0 0 22px"><a href="${safeAppUrl}" style="display:inline-block;padding:13px 20px;border:1px solid #1d4ed8;border-radius:7px;background:#1d4ed8;color:#ffffff;text-decoration:none;font-size:14px;font-weight:bold">Revisar acta en el sistema&nbsp; →</a></p>
+              <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin:0 0 22px">
+                <tr>
+                  <td align="center" bgcolor="#1d4ed8" style="background-color:#1d4ed8;border-radius:7px;mso-padding-alt:14px 22px">
+                    <!--[if mso]>
+                    <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="${safeAppUrl}" style="height:48px;v-text-anchor:middle;width:250px" arcsize="14%" strokecolor="#1d4ed8" fillcolor="#1d4ed8">
+                      <w:anchorlock/>
+                      <center style="color:#ffffff;font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:bold">Revisar acta en el sistema</center>
+                    </v:roundrect>
+                    <![endif]-->
+                    <!--[if !mso]><!-- -->
+                    <a href="${safeAppUrl}" target="_blank" style="display:inline-block;padding:14px 22px;border:1px solid #1d4ed8;border-radius:7px;background-color:#1d4ed8;color:#ffffff;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:20px;font-weight:bold;text-decoration:none;text-align:center;white-space:nowrap">Revisar acta en el sistema</a>
+                    <!--<![endif]-->
+                  </td>
+                </tr>
+              </table>
               <p style="margin:0;color:#64748b;font-size:13px">Si el botón no abre el sistema, usa este enlace:<br><a href="${safeAppUrl}" style="display:inline-block;margin-top:5px;color:#1d4ed8;word-break:break-all">${safeAppUrl}</a></p>
             </td></tr>
             <tr><td style="padding:18px 28px;border-top:1px solid #e2e8f0;background:#f8fafc;color:#64748b;font-size:12px">Este correo fue generado automáticamente por el <strong style="color:#475569">Sistema ADD</strong>.<br>Por favor, no respondas a este mensaje.</td></tr>
