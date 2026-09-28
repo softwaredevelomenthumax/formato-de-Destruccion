@@ -13,10 +13,6 @@ export function AppLayout() {
   if (user?.rol === "costos" && location.pathname !== "/maestros/cecos") {
     return <Navigate to="/maestros/cecos" replace />;
   }
-  if (user?.rol === "administrador" && !["/actas", "/usuarios"].some((path) => location.pathname === path || location.pathname.startsWith(`${path}/`))) {
-    return <Navigate to="/actas" replace />;
-  }
-
   return (
     <div className="flex h-screen min-w-0 overflow-hidden bg-slate-50">
       <Sidebar mobileOpen={mobileMenuOpen} onMobileClose={() => setMobileMenuOpen(false)} />

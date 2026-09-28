@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from "react";
+import { createContext, useContext, useState, useEffect, useCallback, useRef, type ReactNode } from "react";
 import type { Role, User } from "../types";
 import { api } from "../services/api.ts";
 
@@ -45,6 +45,7 @@ interface AuthContextType {
   login: (username: string, password: string) => Promise<{ success: boolean; message: string }>;
   logout: () => void;
   updateCurrentUser: (changes: Partial<User>) => void;
+  refreshSession: () => Promise<void>;
   isAuthenticated: boolean;
   token: string | null;
   setToken: (token: string | null) => void;
@@ -59,12 +60,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const [users, setUsers] = useState<User[]>([]);
   const [token, setTokenState] = useState<string | null>(() => sessionStorage.getItem("add_token"));
+  const sessionRefreshAttemptedRef = useRef(false);
 
   const setToken = useCallback((newToken: string | null) => {
     setTokenState(newToken);
     if (newToken) sessionStorage.setItem("add_token", newToken);
     else sessionStorage.removeItem("add_token");
   }, []);
+
+  const refreshSession = useCallback(async () => {
+    const response = await api.refreshSession();
+    const refreshedUser = normalizeUser(response.user);
+    if (!refreshedUser || !response.token) throw new Error("No se pudo actualizar la sesión");
+    setToken(response.token);
+    setUser(refreshedUser);
+  }, [setToken]);
 
   const updateCurrentUser = useCallback((changes: Partial<User>) => {
     setUser((current) => {
@@ -89,6 +99,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       sessionStorage.removeItem("add_current_user");
     }
   }, [user, token]);
+
+  useEffect(() => {
+    if (!token) {
+      sessionRefreshAttemptedRef.current = false;
+      return;
+    }
+    if (sessionRefreshAttemptedRef.current) return;
+
+    sessionRefreshAttemptedRef.current = true;
+    void refreshSession().catch((error) => {
+      console.error("No se pudo sincronizar el rol de la sesión:", error);
+    });
+  }, [token, refreshSession]);
 
   // Cargar usuarios al iniciar
   useEffect(() => {
@@ -136,7 +159,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, users, login, logout, updateCurrentUser, isAuthenticated: !!user, token, setToken }}>
+    <AuthContext.Provider value={{ user, users, login, logout, updateCurrentUser, refreshSession, isAuthenticated: !!user, token, setToken }}>
       {children}
     </AuthContext.Provider>
   );

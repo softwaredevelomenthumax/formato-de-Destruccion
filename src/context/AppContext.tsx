@@ -33,7 +33,7 @@ interface AppContextType {
   deleteUser: (id: string) => Promise<boolean>;
   approveSolicitud: (id: string) => Promise<void>;
   rejectSolicitud: (id: string) => Promise<void>;
-  registerSolicitud: (s: Omit<RegistroSolicitud, "id" | "createdAt" | "status">) => Promise<void>;
+  registerSolicitud: (s: Omit<RegistroSolicitud, "id" | "createdAt" | "status"> & { password?: string }) => Promise<void>;
 
   // Actas
   createActa: (acta: Omit<Acta, "id" | "consecutivo" | "createdAt" | "updatedAt" | "historial" | "aprobaciones" | "requiereCostos">) => Promise<Acta>;
@@ -73,7 +73,7 @@ function asBoolean(value: unknown): boolean {
 }
 
 export function AppProvider({ children }: { children: ReactNode }) {
-  const { token, user } = useAuth();
+  const { token, user, refreshSession } = useAuth();
   const [users, setUsers] = useState<User[]>([]);
   const [actas, setActas] = useState<Acta[]>([]);
   const [notifications, setNotifications] = useState<Notification[]>([]);
@@ -85,23 +85,29 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const loadData = useCallback(async () => {
     try {
       setLoading(true);
-      const [usersData, actasData, solicitudesData, invimaData] = await Promise.all([
-        api.getUsers(),
-        api.getActas(),
+      const canManageUsers = user?.rol === "administrador" || user?.rol === "admin_global";
+      const canViewActas = user?.rol !== "costos";
+      const [actasResult, usersResult, solicitudesResult, invimaResult] = await Promise.allSettled([
+        canViewActas ? api.getActas() : Promise.resolve([]),
+        canManageUsers ? api.getUsers() : Promise.resolve([]),
         api.getSolicitudes(),
         api.getInvimaProducts(),
       ]);
 
-      setUsers(asArray<User>(usersData));
-      setActas(asArray<Acta>(actasData));
-      setSolicitudes(asArray<RegistroSolicitud>(solicitudesData));
-      setInvimaProducts(asArray<InvimaProduct>(invimaData));
+      if (actasResult.status === "fulfilled") {
+        setActas(asArray<Acta>(actasResult.value));
+      } else {
+        throw actasResult.reason;
+      }
+      if (usersResult.status === "fulfilled") setUsers(asArray<User>(usersResult.value));
+      if (solicitudesResult.status === "fulfilled") setSolicitudes(asArray<RegistroSolicitud>(solicitudesResult.value));
+      if (invimaResult.status === "fulfilled") setInvimaProducts(asArray<InvimaProduct>(invimaResult.value));
     } catch (error) {
       console.error("Error cargando datos:", error);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [user?.rol]);
 
   // Cargar datos al montar
   useEffect(() => {
@@ -140,6 +146,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const response = await api.updateUser(id, updates) as { user?: User };
       const updatedUser = response?.user as User | undefined;
       setUsers((current) => asArray<User>(current).map((u) => (u.id === id ? { ...u, ...updates, ...updatedUser } : u)));
+      if (id === user?.id) await refreshSession();
     } catch (error) {
       console.error("Error actualizando usuario:", error);
       throw error;
@@ -157,7 +164,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const registerSolicitud = async (s: Omit<RegistroSolicitud, "id" | "createdAt" | "status">) => {
+  const registerSolicitud = async (s: Omit<RegistroSolicitud, "id" | "createdAt" | "status"> & { password?: string }) => {
     try {
       const newSolicitud = await api.createSolicitud(s);
       setSolicitudes((current) => [...asArray<RegistroSolicitud>(current), newSolicitud]);
@@ -214,17 +221,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
   };
 
   const deleteActa = async (id: string): Promise<boolean> => {
-    try {
-      await api.deleteActa(id);
-      setActas((current) => asArray<Acta>(current).filter((a) => a.id !== id));
-      return true;
-    } catch (error) {
-      console.error("Error eliminando acta:", error);
-      return false;
-    }
+    await api.deleteActa(id);
+    setActas((current) => asArray<Acta>(current).filter((a) => a.id !== id));
+    return true;
   };
 
-  const sendActa = async (id: string, userId: string, userName: string) => {
+  const sendActa = async (id: string, _userId: string, _userName: string) => {
     try {
       const acta = actas.find((a) => a.id === id) || await api.getActa(id).catch(() => null);
       const newStatus: ActaStatus = "pendiente_aprobacion_area";
@@ -235,38 +237,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setActas((current) => asArray<Acta>(current).map((currentActa) =>
         currentActa.id === id ? { ...currentActa, status: newStatus, requiereCostos: rc } : currentActa
       ));
-      return;
-      
-      await updateActa(id, {
-        status: newStatus,
-        requiereCostos: rc,
-        aprobaciones: [
-          { paso: "area", status: "pendiente" },
-          { paso: "costos", status: rc ? "pendiente" : "no_aplica" },
-          { paso: "hse", status: "pendiente" },
-        ],
-      });
-
-      // Notificar aprobadores de área
-      const areaAprobadores = users.filter((u) => u.rol === "aprobador_area" && u.status === "activo");
-      for (const u of areaAprobadores) {
-        await addNotification({
-          userId: u.id,
-          title: "Nueva acta pendiente de aprobación",
-          message: `El acta ${acta.consecutivo} requiere su aprobación de área.`,
-          type: "info",
-          read: false,
-          actaId: acta.id,
-        });
-      }
-      await addNotification({
-        userId,
-        title: "Acta enviada a aprobación",
-        message: `El acta ${acta.consecutivo} fue enviada correctamente y está pendiente de revisión del aprobador de área.`,
-        type: "success",
-        read: false,
-        actaId: acta.id,
-      });
     } catch (error) {
       console.error("Error enviando acta:", error);
       throw error;
@@ -287,8 +257,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       );
 
       if (paso === "area") {
-        nextStatus = "pendiente_hse";
-      } else if (paso === "costos") {
         nextStatus = "pendiente_hse";
       } else if (paso === "hse") {
         nextStatus = "aprobada";
@@ -321,15 +289,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
         a.id === actaId ? { ...a, status: "rechazada", aprobaciones: updatedAprobaciones } : a
       ));
 
-      // Notificar al solicitante
-      await addNotification({
-        userId: acta.solicitanteId,
-        title: "Acta rechazada",
-        message: `Su acta ${acta.consecutivo} fue rechazada. Motivo: ${motivo.trim()}`,
-        type: "error",
-        read: false,
-        actaId: acta.id,
-      });
     } catch (error) {
       console.error("Error rechazando acta:", error);
       throw error;
@@ -341,7 +300,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const acta = actas.find((a) => a.id === actaId);
       if (!acta) return;
 
-      await api.updateActa(actaId, { status: "devuelta_ajustes" });
+      await api.returnActa(actaId, { paso, aprobador, ajustes });
 
       const updatedAprobaciones = asArray<ActaAprobacion>(acta.aprobaciones).map((ap) =>
         ap.paso === paso ? { ...ap, status: "devuelto" as const } : ap
@@ -351,15 +310,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
         a.id === actaId ? { ...a, status: "devuelta_ajustes", aprobaciones: updatedAprobaciones } : a
       ));
 
-      // Notificar al solicitante
-      await addNotification({
-        userId: acta.solicitanteId,
-        title: "Acta devuelta para ajustes",
-        message: `Su acta ${acta.consecutivo} requiere correcciones.${ajustes?.length ? ` Detalle: ${ajustes.map((ajuste) => `${ajuste.campo}: ${ajuste.comentario || ajuste.correccion}`).join("; ")}` : ""}`,
-        type: "warning",
-        read: false,
-        actaId: acta.id,
-      });
     } catch (error) {
       console.error("Error devolviendo acta:", error);
       throw error;

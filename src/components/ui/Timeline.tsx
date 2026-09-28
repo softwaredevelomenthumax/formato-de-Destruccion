@@ -1,7 +1,7 @@
 import { CheckCircle2, XCircle, Clock, RotateCcw, MinusCircle } from "lucide-react";
 import type { ActaAprobacion } from "../../types";
 
-const PASO_LABELS = { area: "Aprobación de Área", costos: "Revisión de Costos", hse: "Aprobación HSE & S" };
+const PASO_LABELS = { area: "Aprobación de Área", costos: "Aprobación de Costos", hse: "Aprobación HSE & S" };
 
 interface TimelineProps {
   aprobaciones: ActaAprobacion[];
@@ -10,8 +10,8 @@ interface TimelineProps {
 export function ApprovalTimeline({ aprobaciones }: TimelineProps) {
   return (
     <div className="space-y-0">
-      {aprobaciones.map((ap, i) => {
-        const isLast = i === aprobaciones.length - 1;
+      {aprobaciones.filter((ap) => ap.paso !== "costos").map((ap, i, visibleAprobaciones) => {
+        const isLast = i === visibleAprobaciones.length - 1;
         return (
           <div key={ap.paso} className="flex gap-3">
             <div className="flex flex-col items-center">

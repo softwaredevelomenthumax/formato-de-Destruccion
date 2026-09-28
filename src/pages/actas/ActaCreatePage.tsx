@@ -37,7 +37,7 @@ const MATERIAL_CLASSIFICATIONS = [
   { value: "ST", label: "Semiterminado", detail: "Se consulta en el maestro de materiales" },
   { value: "SQ", label: "Sustancia química", detail: "Se consulta en el maestro SAP" },
   { value: "reactivos", label: "Material de laboratorio", detail: "UNBW o material de laboratorio" },
-  { value: "residuo_comun", label: "Común o residuo común peligroso", detail: "Puede usar N/A en INVIMA" },
+  { value: "residuo_comun", label: "Residuos peligrosos comunes", detail: "Puede usar N/A en INVIMA" },
   { value: "residuo_aprovechable", label: "Residuo aprovechable", detail: "Información manual" },
 ] as const;
 
@@ -45,10 +45,14 @@ const MATERIAL_TYPE_OPTIONS = [
   { value: "ROH", classification: "MP", label: "ROH = Materia prima", meaning: "Materia prima: insumos y sustancias que se utilizan para fabricar el producto." },
   { value: "FERT", classification: "PT", label: "FERT = Producto terminado", meaning: "Producto terminado: producto listo para comercialización o entrega." },
   { value: "HALB", classification: "ST", label: "HALB = Semiterminado", meaning: "Semiterminado: material que requiere una etapa adicional antes de convertirse en producto terminado." },
-  { value: "ME", classification: "ME", label: "ME = Material de empaque", meaning: "Material de empaque: envases, etiquetas, blísteres y otros materiales de acondicionamiento." },
+  { value: "VERP", classification: "ME", label: "VERP = Material de empaque", meaning: "Material de empaque: envases, etiquetas, bl?steres y otros materiales de acondicionamiento." },
   { value: "UNBW", classification: "reactivos", label: "UNBW = Reactivo o material de laboratorio", meaning: "Reactivo o material de laboratorio: sustancias y materiales usados para análisis, control o referencia." },
+  { value: "ZNBW", classification: "residuo_comun", label: "ZNBW = Residuos peligrosos comunes", meaning: "Residuos peligrosos comunes generados durante actividades operativas." },
+  { value: "OTRO", classification: "otro", label: "Otro", meaning: "Tipo de material no incluido en las opciones anteriores." },
 ] as const;
 
+const MATERIAL_TYPES_WITH_EXPIRY = new Set(["UNBW", "ROH", "FERT", "VERP"]);
+const MATERIAL_TYPES_WITH_PRICE = new Set(["UNBW", "ROH", "FERT", "VERP"]);
 const INVIMA_CLASSIFICATIONS = new Set(["MP", "ME", "PT"]);
 
 const normalizeMaterialType = (value: unknown) => {
@@ -66,17 +70,21 @@ const normalizeMaterialType = (value: unknown) => {
     HALB: "HALB",
     SEMITERMINADO: "HALB",
     PRODUCTOSEMITERMINADO: "HALB",
-    ME: "ME",
-    VERP: "ME",
-    ZEMB: "ME",
-    MATERIALEMPAQUE: "ME",
+    ME: "VERP",
+    VERP: "VERP",
+    ZEMB: "VERP",
+    MATERIALEMPAQUE: "VERP",
     UNBW: "UNBW",
     REACTIVO: "UNBW",
     REACTIVOS: "UNBW",
     MATERIALDELABORATORIO: "UNBW",
+    ZNBW: "ZNBW",
+    OTRO: "OTRO",
   };
   return aliases[normalized] || String(value || "").trim().toUpperCase();
 };
+
+const requiresExpiryDate = (value: unknown) => MATERIAL_TYPES_WITH_EXPIRY.has(normalizeMaterialType(value));
 
 const isControlledMaterial = (product: InvimaProduct) =>
   product.controlado || ["PT", "FERT"].includes(String(product.clase || "").trim().toUpperCase());
@@ -88,6 +96,8 @@ const normalizeClassification = (value: unknown) => {
     FERT: "PT",
     HALB: "ST",
     UNBW: "reactivos",
+    ZNBW: "residuo_comun",
+    OTRO: "otro",
     REACTIVOS: "reactivos",
     RESIDUO_COMUN: "residuo_comun",
     RESIDUO_APROVECHABLE: "residuo_aprovechable",
@@ -271,19 +281,21 @@ const step2Schema = z.object({
       message: "Seleccione si o no",
     }),
   clasificacion: z.enum(["PT", "ME", "MP", "ST", "SQ", "residuo_comun", "residuo_aprovechable", "materia_prima", "producto_semiterminado", "granel", "producto_terminado", "material_empaque", "reactivos", "remanentes", "muestras", "otro"] as const),
-  fechaVencimiento: z
-    .any()
-    .refine((value) => typeof value === "string" && value.trim().length > 0, {
-      message: "Fecha de vencimiento obligatoria",
-    })
-    .refine((value) => typeof value !== "string" || /^\d{4}-\d{2}-\d{2}$/.test(value), {
-      message: "La fecha debe tener el formato DD/MM/YYYY",
-    }),
+  fechaVencimiento: z.string().optional(),
   registroINVIMA: requiredString("Registro INVIMA"),
   estadoInvima: z.enum(["Vigente", "Vencido", "Cancelado", "N/A"] as const),
   invimaProductId: z.string().optional(),
   sapCodeId: z.string().optional(),
   tipoMaterial: z.string().optional(),
+}).superRefine((data, ctx) => {
+  const materialType = normalizeMaterialType(data.tipoMaterial);
+  const date = data.fechaVencimiento?.trim() || "";
+  if (MATERIAL_TYPES_WITH_EXPIRY.has(materialType) && !date) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["fechaVencimiento"], message: "Fecha de vencimiento obligatoria" });
+  }
+  if (date && !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["fechaVencimiento"], message: "La fecha debe tener el formato DD/MM/YYYY" });
+  }
 });
 const numberField = (label: string, maxValue: number, integer = false, allowZero = false) =>
   z.any().superRefine((value, ctx) => {
@@ -393,9 +405,11 @@ export default function ActaCreatePage() {
   const [summaryMaterialPage, setSummaryMaterialPage] = useState(0);
   const [costoNoAplica, setCostoNoAplica] = useState(false);
   const [isSendingApproval, setIsSendingApproval] = useState(false);
+  const [isSavingDraft, setIsSavingDraft] = useState(false);
   const [sendingConsecutivo, setSendingConsecutivo] = useState("");
   const [maxStepReached, setMaxStepReached] = useState(0);
   const draftLoadedRef = useRef(false);
+  const submissionLockRef = useRef(false);
   const [cecos, setCecos] = useState<Ceco[]>([]);
   const [cecoSearch, setCecoSearch] = useState("");
   const [showCecoModal, setShowCecoModal] = useState(false);
@@ -493,6 +507,7 @@ export default function ActaCreatePage() {
     setCostoNoAplica(Number(editingActa.costoDestruccion) === 0);
     setFormData({
       ...editingActa,
+      fechaVencimiento: editingActa.fechaVencimiento || undefined,
       tipoMaterial: editingActa.tipoMaterial,
     });
     setSelectedEmpresa(editingActa.empresa);
@@ -637,6 +652,7 @@ export default function ActaCreatePage() {
     form2.setValue("invimaProductId", product.id);
     form2.setValue("registroINVIMA", product.registryNumber);
     form2.setValue("tipoMaterial", getMaterialTypeCode(product), { shouldDirty: true });
+    if (!requiresExpiryDate(getMaterialTypeCode(product))) form2.setValue("fechaVencimiento", "", { shouldValidate: true, shouldDirty: true });
     if (product.codigo) form2.setValue("codigoSAP", product.codigo, { shouldValidate: true });
     form2.setValue("descripcion", product.productName);
     const masterType = (product.clase || "").toUpperCase();
@@ -644,7 +660,8 @@ export default function ActaCreatePage() {
       : masterType.includes("FERT") || masterType.includes("PT") ? "PT"
       : masterType.includes("HALB") || masterType.includes("ST") ? "ST"
       : masterType.includes("UNBW") ? "reactivos"
-      : masterType === "ME" ? "ME" : undefined;
+      : masterType === "ME" || masterType === "VERP" ? "ME"
+      : masterType === "ZNBW" ? "residuo_comun" : undefined;
     if (classification) form2.setValue("clasificacion", classification as Step2Data["clasificacion"], { shouldValidate: true, shouldDirty: true });
     setInvimaSearch(product.registryNumber);
     setShowInvimaDropdown(false);
@@ -664,21 +681,35 @@ export default function ActaCreatePage() {
       code?.trim().toLowerCase() === form2.watch("codigoSAP")?.trim().toLowerCase()
     )
   );
+  const selectedMaterialType = selectedMasterMaterial ? getMaterialTypeCode(selectedMasterMaterial) : "";
+  const activeMaterialType = normalizeMaterialType(
+    form2.watch("codigoSAP") === "N/A"
+      ? form2.watch("tipoMaterial")
+      : selectedMaterialType || form2.watch("tipoMaterial"),
+  );
+  const materialAllowsExpiry = MATERIAL_TYPES_WITH_EXPIRY.has(activeMaterialType);
+  const materialAllowsPrice = MATERIAL_TYPES_WITH_PRICE.has(activeMaterialType);
   const masterUnitPrice = selectedMasterMaterial?.precioEstandar;
-  const hasMasterUnitPrice = masterUnitPrice != null && Number.isFinite(Number(masterUnitPrice));
+  const hasMasterUnitPrice = materialAllowsPrice && masterUnitPrice != null && Number.isFinite(Number(masterUnitPrice));
 
   useEffect(() => {
-    if (!selectedMasterMaterial) return;
+    if (!materialAllowsPrice) {
+      form3.setValue("costoDestruccion", 0, { shouldValidate: true, shouldDirty: true });
+      setCostoNoAplica(true);
+      return;
+    }
+    if (!selectedMasterMaterial) {
+      setCostoNoAplica(false);
+      return;
+    }
     form3.setValue("costoDestruccion", hasMasterUnitPrice ? Number(masterUnitPrice) : 0, { shouldValidate: true, shouldDirty: true });
     setCostoNoAplica(false);
-  }, [form3, hasMasterUnitPrice, masterUnitPrice, selectedMasterMaterial]);
+  }, [form3, hasMasterUnitPrice, masterUnitPrice, materialAllowsPrice, selectedMasterMaterial]);
 
   const invimaNotApplicable = form2.watch("registroINVIMA") === "N/A";
   const sapNotApplicable = form2.watch("codigoSAP") === "N/A";
   const masterType = (selectedMasterMaterial?.clase || "").toUpperCase();
-  const classificationLocked = !sapNotApplicable && !!selectedMasterMaterial && (masterType.includes("ROH") || masterType === "MP" || masterType.includes("FERT") || masterType === "PT" || masterType.includes("HALB") || masterType === "ST" || masterType.includes("UNBW") || masterType === "ME");
-  const selectedMaterialType = selectedMasterMaterial ? getMaterialTypeCode(selectedMasterMaterial) : "";
-
+  const classificationLocked = !sapNotApplicable && !!selectedMasterMaterial && (masterType.includes("ROH") || masterType === "MP" || masterType.includes("FERT") || masterType === "PT" || masterType.includes("HALB") || masterType === "ST" || masterType.includes("UNBW") || masterType === "ME" || masterType === "VERP" || masterType === "ZNBW");
   const setInvimaNotApplicable = () => {
     form2.setValue("registroINVIMA", "N/A", { shouldValidate: true, shouldDirty: true });
     form2.setValue("invimaProductId", undefined, { shouldDirty: true });
@@ -699,6 +730,7 @@ export default function ActaCreatePage() {
     form2.setValue("invimaProductId", sap.id);
     form2.setValue("registroINVIMA", sap.registryNumber || "N/A");
     form2.setValue("tipoMaterial", getMaterialTypeCode(sap), { shouldDirty: true });
+    if (!requiresExpiryDate(getMaterialTypeCode(sap))) form2.setValue("fechaVencimiento", "", { shouldValidate: true, shouldDirty: true });
     form2.setValue("descripcion", sap.productName);
     {
       const masterType = (sap.clase || "").toUpperCase();
@@ -706,7 +738,8 @@ export default function ActaCreatePage() {
         : masterType.includes("FERT") || masterType.includes("PT") ? "PT"
         : masterType.includes("HALB") || masterType.includes("ST") ? "ST"
         : masterType.includes("UNBW") ? "reactivos"
-        : masterType === "ME" ? "ME" : undefined;
+        : masterType === "ME" || masterType === "VERP" ? "ME"
+      : masterType === "ZNBW" ? "residuo_comun" : undefined;
       if (classification) form2.setValue("clasificacion", classification as Step2Data["clasificacion"], { shouldValidate: true, shouldDirty: true });
     }
     setShowSapModal(false);
@@ -752,7 +785,7 @@ export default function ActaCreatePage() {
       String(currentMaterial.codigoSAP || "").trim() &&
       String(currentMaterial.numeroLote || "").trim() &&
       String(currentMaterial.ordenProduccion || "").trim() &&
-      String(currentMaterial.fechaVencimiento || "").trim() &&
+      (!requiresExpiryDate(currentMaterial.tipoMaterial) || String(currentMaterial.fechaVencimiento || "").trim()) &&
       String(currentMaterial.registroINVIMA || "").trim() &&
       currentMaterial.clasificacion &&
       (currentMaterial.sustanciaControlada === true || currentMaterial.sustanciaControlada === false)
@@ -763,7 +796,7 @@ export default function ActaCreatePage() {
     const currentMaterial = form2.getValues();
     if (!hasCompleteMaterial(currentMaterial)) {
       if (materials.length > 0) {
-        setFormData((previous) => ({ ...previous, ...materials[0] }));
+        setFormData((previous) => ({ ...previous, ...materials[0], fechaVencimiento: materials[0].fechaVencimiento || undefined }));
         setCurrentStep(4);
         return;
       }
@@ -779,7 +812,7 @@ export default function ActaCreatePage() {
   const continueWithSavedProducts = () => {
     if (materials.length === 0) return;
     form2.clearErrors();
-    setFormData((prev) => ({ ...prev, ...materials[0] }));
+    setFormData((prev) => ({ ...prev, ...materials[0], fechaVencimiento: materials[0].fechaVencimiento || undefined }));
     setCompletedSteps((prev) => [...new Set([...prev, 2])]);
     setShowMoreProductsModal(false);
     setCurrentStep(3);
@@ -802,7 +835,7 @@ export default function ActaCreatePage() {
       ordenProduccion: data.ordenProduccion,
       sustanciaControlada: data.sustanciaControlada,
       clasificacion: normalizeClassification(data.clasificacion) as Step2Data["clasificacion"],
-      fechaVencimiento: data.fechaVencimiento,
+      fechaVencimiento: requiresExpiryDate(data.tipoMaterial) ? data.fechaVencimiento || null : null,
       registroINVIMA: data.registroINVIMA,
       estadoInvima: data.estadoInvima,
       invimaProductId: data.invimaProductId,
@@ -923,7 +956,9 @@ export default function ActaCreatePage() {
   };
 
   const handleSaveDraft = async () => {
-    if (!user || !selectedCausal) return;
+    if (!user || !selectedCausal || submissionLockRef.current) return;
+    submissionLockRef.current = true;
+    setIsSavingDraft(true);
     try {
       const data = { ...formData } as any;
       const materialItems = materialsForSave(data as Step2Data);
@@ -941,7 +976,7 @@ export default function ActaCreatePage() {
           ordenProduccion: data.ordenProduccion || "",
           sustanciaControlada: !!data.sustanciaControlada,
           clasificacion: data.clasificacion || "otro",
-          fechaVencimiento: data.fechaVencimiento || "",
+          fechaVencimiento: requiresExpiryDate(data.tipoMaterial) ? data.fechaVencimiento || null : null,
           registroINVIMA: data.registroINVIMA || "",
           estadoInvima: data.estadoInvima || "N/A",
           invimaProductId: data.invimaProductId,
@@ -976,7 +1011,7 @@ export default function ActaCreatePage() {
       ordenProduccion: data.ordenProduccion || "",
       sustanciaControlada: !!data.sustanciaControlada,
       clasificacion: data.clasificacion || "otro",
-      fechaVencimiento: data.fechaVencimiento || "",
+      fechaVencimiento: requiresExpiryDate(data.tipoMaterial) ? data.fechaVencimiento || null : null,
       registroINVIMA: data.registroINVIMA || "",
       estadoInvima: data.estadoInvima || "N/A",
       invimaProductId: data.invimaProductId,
@@ -992,12 +1027,15 @@ export default function ActaCreatePage() {
       toast.success(`Borrador guardado: ${acta.consecutivo}`);
       navigate("/actas");
     } catch (error) {
+      submissionLockRef.current = false;
+      setIsSavingDraft(false);
       toast.error(error instanceof Error ? error.message : "No se pudo guardar el borrador");
     }
   };
 
   const handleSendApproval = async () => {
-    if (!user || !selectedCausal) return;
+    if (!user || !selectedCausal || submissionLockRef.current) return;
+    submissionLockRef.current = true;
     setIsSendingApproval(true);
     setSendingConsecutivo(editingActa?.consecutivo || "");
     try {
@@ -1017,7 +1055,7 @@ export default function ActaCreatePage() {
           ordenProduccion: data.ordenProduccion || "",
           sustanciaControlada: !!data.sustanciaControlada,
           clasificacion: data.clasificacion || "otro",
-          fechaVencimiento: data.fechaVencimiento || "",
+          fechaVencimiento: requiresExpiryDate(data.tipoMaterial) ? data.fechaVencimiento || null : null,
           registroINVIMA: data.registroINVIMA || "",
           estadoInvima: data.estadoInvima || "N/A",
           invimaProductId: data.invimaProductId,
@@ -1052,7 +1090,7 @@ export default function ActaCreatePage() {
       ordenProduccion: data.ordenProduccion || "",
       sustanciaControlada: !!data.sustanciaControlada,
       clasificacion: data.clasificacion || "otro",
-      fechaVencimiento: data.fechaVencimiento || "",
+      fechaVencimiento: requiresExpiryDate(data.tipoMaterial) ? data.fechaVencimiento || null : null,
       registroINVIMA: data.registroINVIMA || "",
       estadoInvima: data.estadoInvima || "N/A",
       invimaProductId: data.invimaProductId,
@@ -1070,6 +1108,7 @@ export default function ActaCreatePage() {
       toast.success(`Acta ${acta.consecutivo} enviada a aprobación`);
       navigate(`/actas/${acta.id}`);
     } catch (error) {
+      submissionLockRef.current = false;
       setIsSendingApproval(false);
       setSendingConsecutivo("");
       toast.error(error instanceof Error ? error.message : "No se pudo crear el acta");
@@ -1456,11 +1495,15 @@ export default function ActaCreatePage() {
                 <select
                   id="tipo-material"
                   {...form2.register("tipoMaterial")}
-                  value={sapNotApplicable ? form2.watch("tipoMaterial") || "" : selectedMaterialType}
-                  onChange={(event) => form2.setValue("tipoMaterial", event.target.value, { shouldDirty: true })}
-                  disabled={!sapNotApplicable}
+                  value={selectedMasterMaterial && !sapNotApplicable ? selectedMaterialType : form2.watch("tipoMaterial") || ""}
+                  onChange={(event) => {
+                    const nextType = event.target.value;
+                    form2.setValue("tipoMaterial", nextType, { shouldDirty: true, shouldValidate: true });
+                    if (!requiresExpiryDate(nextType)) form2.setValue("fechaVencimiento", "", { shouldDirty: true, shouldValidate: true });
+                  }}
+                  disabled={!sapNotApplicable && !!selectedMasterMaterial}
                   aria-label="Tipo de material asociado al código SAP"
-                  className={`w-full px-3 py-2.5 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${sapNotApplicable ? "border-slate-300 bg-white text-slate-700" : "border-slate-200 bg-slate-50 text-slate-700 cursor-default"}`}
+                  className={`w-full px-3 py-2.5 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${selectedMasterMaterial && !sapNotApplicable ? "border-slate-200 bg-slate-50 text-slate-700 cursor-default" : "border-slate-300 bg-white text-slate-700"}`}
                 >
                   <option value="">{sapNotApplicable ? "Seleccione el tipo de material" : "Sin tipo asociado"}</option>
                   {selectedMaterialType && !MATERIAL_TYPE_OPTIONS.some((option) => option.value === selectedMaterialType) && (
@@ -1468,26 +1511,34 @@ export default function ActaCreatePage() {
                   )}
                   {MATERIAL_TYPE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
                 </select>
-                <p className="mt-1 text-xs text-slate-500">{sapNotApplicable ? "Seleccione el código que corresponda al material." : "Se completa automáticamente al seleccionar un código SAP del maestro."}</p>
+                <p className="mt-1 text-xs text-slate-500">{selectedMasterMaterial && !sapNotApplicable ? "Se completa automáticamente al seleccionar un código SAP del maestro." : "Seleccione el tipo de material correspondiente al código SAP."}</p>
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Número de Lote *</label>
-                <input {...form2.register("numeroLote")} placeholder="LOT-XXXX o NO APLICA" className="w-full px-3 py-2.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                <div className="flex gap-2">
+                  <input {...form2.register("numeroLote")} placeholder="LOT-XXXX o NO APLICA" className="min-w-0 flex-1 px-3 py-2.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  <button type="button" onClick={() => form2.setValue("numeroLote", "NO APLICA", { shouldDirty: true, shouldValidate: true })} className="shrink-0 px-3 py-2 text-xs font-medium text-slate-700 border border-slate-300 rounded-lg hover:bg-slate-50">No aplica</button>
+                </div>
                 <FieldError message={form2.formState.errors.numeroLote?.message} />
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Orden de Producción *</label>
-                <input {...form2.register("ordenProduccion")} placeholder="OP-XXXX o NO APLICA" className="w-full px-3 py-2.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                <div className="flex gap-2">
+                  <input {...form2.register("ordenProduccion")} placeholder="OP-XXXX o NO APLICA" className="min-w-0 flex-1 px-3 py-2.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  <button type="button" onClick={() => form2.setValue("ordenProduccion", "NO APLICA", { shouldDirty: true, shouldValidate: true })} className="shrink-0 px-3 py-2 text-xs font-medium text-slate-700 border border-slate-300 rounded-lg hover:bg-slate-50">No aplica</button>
+                </div>
                 <FieldError message={form2.formState.errors.ordenProduccion?.message} />
               </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Fecha de Vencimiento *</label>
-                <DateField
-                  value={form2.watch("fechaVencimiento")}
-                  onChange={(value) => form2.setValue("fechaVencimiento", value, { shouldValidate: true, shouldDirty: true })}
-                />
-                <FieldError message={form2.formState.errors.fechaVencimiento?.message} />
-              </div>
+              {materialAllowsExpiry && (
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Fecha de vencimiento *</label>
+                  <DateField
+                    value={form2.watch("fechaVencimiento")}
+                    onChange={(value) => form2.setValue("fechaVencimiento", value, { shouldValidate: true, shouldDirty: true })}
+                  />
+                  <FieldError message={form2.formState.errors.fechaVencimiento?.message} />
+                </div>
+              )}
             </div>
             <div>
               <div className="mb-2 flex items-center justify-between gap-3">
@@ -1584,10 +1635,10 @@ export default function ActaCreatePage() {
                           <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">Orden producción</p>
                           <p className="mt-1 text-sm font-medium text-slate-800">{material.ordenProduccion}</p>
                         </div>
-                        <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                        {material.fechaVencimiento && <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
                           <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">Vencimiento</p>
                           <p className="mt-1 text-sm font-medium text-slate-800">{material.fechaVencimiento}</p>
-                        </div>
+                        </div>}
                         <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
                           <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">Controlado</p>
                           <p className="mt-1 text-sm font-medium text-slate-800">{material.sustanciaControlada ? "Sí" : "No"}</p>
@@ -1596,14 +1647,16 @@ export default function ActaCreatePage() {
                           <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">Unidades</p>
                           <p className="mt-1 text-sm font-medium text-slate-800">{material.cantidadUnidades ?? "—"}</p>
                         </div>
-                        <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-                          <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">Precio unitario</p>
-                          <p className="mt-1 text-sm font-medium text-slate-800">{material.costoUnitario == null ? "—" : `COP ${Number(material.costoUnitario).toLocaleString("es-CO")}`}</p>
-                        </div>
-                        <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 sm:col-span-2 xl:col-span-2">
-                          <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">Total</p>
-                          <p className="mt-1 text-sm font-semibold text-slate-900">{material.costoTotal == null ? "—" : `COP ${Number(material.costoTotal).toLocaleString("es-CO")}`}</p>
-                        </div>
+                        {MATERIAL_TYPES_WITH_PRICE.has(normalizeMaterialType(material.tipoMaterial)) && <>
+                          <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                            <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">Precio del material a destruir</p>
+                            <p className="mt-1 text-sm font-medium text-slate-800">{material.costoUnitario == null ? "—" : `COP ${Number(material.costoUnitario).toLocaleString("es-CO")}`}</p>
+                          </div>
+                          <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 sm:col-span-2 xl:col-span-2">
+                            <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">Total</p>
+                            <p className="mt-1 text-sm font-semibold text-slate-900">{material.costoTotal == null ? "—" : `COP ${Number(material.costoTotal).toLocaleString("es-CO")}`}</p>
+                          </div>
+                        </>}
                       </div>
 
                       <div className="flex justify-end">
@@ -1680,8 +1733,8 @@ export default function ActaCreatePage() {
               </div>
               <div className="flex min-w-0 flex-col">
                 <div className="mb-1 flex h-10 items-start gap-2">
-                  <label className="min-w-0 flex-1 text-sm font-medium leading-tight text-slate-700">Precio unitario (COP)</label>
-                  {!hasMasterUnitPrice && <button
+                  <label className="min-w-0 flex-1 text-sm font-medium leading-tight text-slate-700">Precio del material a destruir (COP)</label>
+                  {materialAllowsPrice && !hasMasterUnitPrice && <button
                       type="button"
                       onClick={() => {
                         const nextValue = !costoNoAplica;
@@ -1699,11 +1752,12 @@ export default function ActaCreatePage() {
                   inputMode="numeric"
                   maxLength={13}
                   placeholder="0"
-                  disabled={costoNoAplica || hasMasterUnitPrice}
+                  disabled={!materialAllowsPrice || costoNoAplica || hasMasterUnitPrice}
                   value={costoNoAplica ? "" : form3.watch("costoDestruccion") || ""}
                   className="w-full px-3 py-2.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed"
                 />
                 {hasMasterUnitPrice && <p className="mt-1 text-xs text-blue-700">Precio tomado del maestro de productos.</p>}
+                {!materialAllowsPrice && <p className="mt-1 text-xs text-slate-500">No aplica para este tipo de material.</p>}
                 {costoNoAplica && <p className="mt-1 text-xs text-slate-500">Se guardará como “No aplica” y tendrá valor interno 0.</p>}
                 <FieldError message={form3.formState.errors.costoDestruccion?.message} />
               </div>
@@ -1715,7 +1769,7 @@ export default function ActaCreatePage() {
                   {costoNoAplica ? "No aplica" : `COP ${(Number(form3.watch("cantidadUnidades") || 0) * Number(form3.watch("costoDestruccion") || 0)).toLocaleString("es-CO")}`}
                 </span>
               </div>
-              <p className="mt-1 text-xs text-blue-700">Cantidad × precio unitario</p>
+              <p className="mt-1 text-xs text-blue-700">Cantidad × precio del material a destruir</p>
             </div>
             <div className="flex justify-between pt-2">
               <button type="button" onClick={() => setCurrentStep(2)} className="h-11 min-w-[140px] px-4 py-2.5 text-sm text-slate-700 font-medium bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors">← Volver al material</button>
@@ -1838,7 +1892,7 @@ export default function ActaCreatePage() {
             <Section title="Información General">
               <Row label="Empresa" value={String(formData.empresa || "")} />
               <Row label="Centro de Costos" value={String(formData.centroCostos || "")} />
-              <Row label="Fecha" value={String(formData.fecha || "")} />
+              <Row label="Fecha" value={String(formData.fecha || "").slice(0, 10)} />
               <Row label="Solicitante" value={user?.nombre || ""} />
               <Row label="Responsable" value={String(formData.responsable || "")} />
               <Row label="Área" value={String(formData.area || "")} />
@@ -1879,12 +1933,14 @@ export default function ActaCreatePage() {
                       <Row label="Registro INVIMA" value={summaryMaterial.registroINVIMA} />
                       <Row label="Número de Lote" value={summaryMaterial.numeroLote} />
                       <Row label="Orden de Producción" value={summaryMaterial.ordenProduccion} />
-                      <Row label="Fecha Vencimiento" value={summaryMaterial.fechaVencimiento} />
+                      {summaryMaterial.fechaVencimiento && <Row label="Fecha de vencimiento" value={summaryMaterial.fechaVencimiento} />}
                       <Row label="Sustancia Controlada" value={summaryMaterial.sustanciaControlada ? "Sí" : "No"} />
                       <Row label="Peso (kg)" value={String(summaryMaterial.pesoKg ?? "—")} />
                       <Row label="Unidades" value={String(summaryMaterial.cantidadUnidades ?? "—")} />
-                      <Row label="Precio unitario" value={summaryMaterial.costoUnitario == null ? "—" : `COP ${Number(summaryMaterial.costoUnitario).toLocaleString("es-CO")}`} />
-                      <Row label="Total del material" value={summaryMaterial.costoTotal == null ? "—" : `COP ${Number(summaryMaterial.costoTotal).toLocaleString("es-CO")}`} />
+                      {MATERIAL_TYPES_WITH_PRICE.has(normalizeMaterialType(summaryMaterial.tipoMaterial)) && <>
+                        <Row label="Precio del material a destruir" value={summaryMaterial.costoUnitario == null ? "—" : `COP ${Number(summaryMaterial.costoUnitario).toLocaleString("es-CO")}`} />
+                        <Row label="Total del material" value={summaryMaterial.costoTotal == null ? "—" : `COP ${Number(summaryMaterial.costoTotal).toLocaleString("es-CO")}`} />
+                      </>}
                     </div>
                   </div>
                 </div>
@@ -1916,10 +1972,10 @@ export default function ActaCreatePage() {
           <div className="flex justify-between pt-5 border-t border-slate-200 mt-5">
             <button onClick={() => setCurrentStep(5)} className="h-11 min-w-[140px] px-4 py-2.5 text-sm text-slate-700 font-medium bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors">← Anterior</button>
             <div className="flex gap-3">
-              <button onClick={handleSaveDraft} className="h-11 min-w-[140px] px-5 py-2.5 text-sm font-medium border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition-colors">
-                Guardar Borrador
+              <button onClick={handleSaveDraft} disabled={isSavingDraft || isSendingApproval} className="h-11 min-w-[140px] px-5 py-2.5 text-sm font-medium border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition-colors disabled:cursor-not-allowed disabled:opacity-60">
+                {isSavingDraft ? "Guardando…" : "Guardar Borrador"}
               </button>
-              <button onClick={handleSendApproval} disabled={isSendingApproval} className="h-11 min-w-[170px] px-5 py-2.5 rounded-lg text-sm font-semibold bg-blue-700 text-white hover:bg-blue-800 transition-colors flex items-center justify-center gap-2 disabled:cursor-not-allowed disabled:opacity-60">
+              <button onClick={handleSendApproval} disabled={isSendingApproval || isSavingDraft} className="h-11 min-w-[170px] px-5 py-2.5 rounded-lg text-sm font-semibold bg-blue-700 text-white hover:bg-blue-800 transition-colors flex items-center justify-center gap-2 disabled:cursor-not-allowed disabled:opacity-60">
                 <CheckCircle2 size={16} /> Enviar a Aprobación
               </button>
             </div>

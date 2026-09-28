@@ -6,6 +6,10 @@ import { ActaStatusBadge } from "../../components/ui/Badge";
 import { EmptyState } from "../../components/ui/EmptyState";
 import type { ActaStatus } from "../../types";
 
+function normalizeArea(value?: string) {
+  return String(value || "").trim().toLocaleLowerCase("es-CO").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, " ");
+}
+
 export default function AprobacionesPage() {
   const { user } = useAuth();
   const { actas } = useApp();
@@ -15,13 +19,12 @@ export default function AprobacionesPage() {
 
   const statusMap: Partial<Record<string, ActaStatus>> = {
     aprobador_area: "pendiente_aprobacion_area",
-    costos: "pendiente_costos",
     hse: "pendiente_hse",
   };
 
   const targetStatus = statusMap[user.rol];
   const pendingActas = Array.isArray(actas)
-    ? actas.filter((a) => a && a.status === targetStatus)
+    ? actas.filter((a) => a && a.status === targetStatus && (user.rol !== "aprobador_area" || normalizeArea(a.area) === normalizeArea(user.area)))
     : [];
 
   return (
@@ -56,7 +59,7 @@ export default function AprobacionesPage() {
                     <div className="flex gap-4 mt-1 text-xs text-slate-500">
                       <span>Empresa: {acta.empresa || "—"}</span>
                       <span>Solicitante: {acta.solicitanteNombre || "—"}</span>
-                      <span>Fecha: {acta.fecha || "—"}</span>
+                      <span>Fecha: {String(acta.fecha || "").slice(0, 10).replace(/^(\d{4})-(\d{2})-(\d{2})$/, "$3/$2/$1") || "—"}</span>
                       <span>COP {safeCosto.toLocaleString("es-CO")}</span>
                     </div>
                   </div>

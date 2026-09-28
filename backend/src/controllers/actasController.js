@@ -2,7 +2,7 @@ import { getPool } from '../database/connection.js';
 import { sendNotificationEmail } from '../services/emailService.js';
 import sql from 'mssql';
 
-async function createAndSendNotification(pool, recipient, { title, message, type = 'info', actaId, actaReference }) {
+async function createAndSendNotification(pool, recipient, { title, message, type = 'info', actaId, actaReference, emailStage }) {
   // La columna notifications.id admite hasta 50 caracteres. Los UUID de
   // usuarios ocupan 36, por lo que no deben formar parte del identificador.
   const id = `n${Date.now()}-${Math.random().toString(36).slice(2, 12)}`;
@@ -22,6 +22,7 @@ async function createAndSendNotification(pool, recipient, { title, message, type
     title,
     message,
     actaId: actaReference || actaId,
+    stage: emailStage,
   });
 }
 
@@ -31,6 +32,39 @@ async function notifyRole(pool, role, notification) {
     .query("SELECT id, nombre, email FROM users WHERE rol = @role AND status = 'activo'");
 
   await Promise.all(result.recordset.map((recipient) => createAndSendNotification(pool, recipient, notification)));
+}
+
+function normalizeArea(value) {
+  return String(value || "")
+    .trim()
+    .toLocaleLowerCase("es-CO")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, " ");
+}
+
+async function userBelongsToArea(pool, userId, area) {
+  const result = await pool.request()
+    .input('userId', userId)
+    .query('SELECT area FROM users WHERE id = @userId AND status = \'activo\'');
+  return normalizeArea(result.recordset[0]?.area) === normalizeArea(area);
+}
+
+async function notifyAreaApprovers(pool, area, notification) {
+  const areaKey = normalizeArea(area);
+  if (!areaKey) {
+    console.warn("Acta sin área: no se envió notificación a aprobadores de área.");
+    return;
+  }
+
+  const result = await pool.request()
+    .query("SELECT id, nombre, email, area FROM users WHERE rol = 'aprobador_area' AND status = 'activo'");
+  const recipients = result.recordset.filter((user) => normalizeArea(user.area) === areaKey);
+  if (!recipients.length) {
+    console.warn(`No hay aprobador activo para el área: ${area}`);
+    return;
+  }
+  await Promise.all(recipients.map((recipient) => createAndSendNotification(pool, recipient, notification)));
 }
 
 async function getActiveUser(pool, userId) {
@@ -98,8 +132,9 @@ export async function createActa(req, res) {
       responsable, area, descripcion, tipoMaterial, codigoSAP, numeroLote, ordenProduccion,
       sustanciaControlada, clasificacion, fechaVencimiento, registroINVIMA, estadoInvima,
       pesoKg, cantidadUnidades, costoDestruccion, causal, otraCausal, observaciones,
-      adjuntos, requiereCostos, cecoId, invimaProductId, sapCodeId, materiales,
+      adjuntos, cecoId, invimaProductId, sapCodeId, materiales,
     } = req.body;
+    const requiereCostos = false;
     const pool = getPool();
 
     const id = `a${Date.now()}`;
@@ -172,7 +207,6 @@ export async function createActa(req, res) {
     // Crear aprobaciones
     const aprobaciones = [
       { paso: 'area', status: 'pendiente' },
-      { paso: 'costos', status: requiereCostos ? 'pendiente' : 'no_aplica' },
       { paso: 'hse', status: 'pendiente' },
     ];
 
@@ -351,19 +385,19 @@ export async function deleteActa(req, res) {
   }
 }
 
-// Enviar a aprobaciÃ³n desde el servidor para que el aviso no dependa de que
+// Enviar a aprobación desde el servidor para que el aviso no dependa de que
 // el navegador del solicitante permanezca abierto.
 export async function submitActa(req, res) {
   try {
     const { id } = req.params;
-    const { requiereCostos } = req.body;
+    const requiereCostos = false;
     const pool = getPool();
     const actaResult = await pool.request().input('id', id)
-      .query('SELECT id, consecutivo, solicitanteId, status FROM actas WHERE id = @id');
+      .query('SELECT id, consecutivo, solicitanteId, status, area FROM actas WHERE id = @id');
     const acta = actaResult.recordset[0];
     if (!acta) return res.status(404).json({ error: 'Acta no encontrada' });
     if (['pendiente_aprobacion_area', 'pendiente_costos', 'pendiente_hse', 'aprobada'].includes(acta.status)) {
-      return res.status(409).json({ error: 'El acta ya se encuentra en el flujo de aprobaciÃ³n' });
+      return res.status(409).json({ error: 'El acta ya se encuentra en el flujo de aprobación' });
     }
 
     await pool.request()
@@ -373,15 +407,15 @@ export async function submitActa(req, res) {
 
     await pool.request()
       .input('actaId', id)
-      .input('requiereCostos', Boolean(requiereCostos))
       .query(`UPDATE acta_aprobaciones
-        SET status = CASE WHEN paso = 'costos' AND @requiereCostos = 0 THEN 'no_aplica' ELSE 'pendiente' END,
+        SET status = CASE WHEN paso = 'costos' THEN 'no_aplica' ELSE 'pendiente' END,
           aprobador = NULL, comentario = NULL, motivo = NULL, ajustes = NULL
         WHERE actaId = @actaId`);
 
-    await notifyRole(pool, 'aprobador_area', {
-      title: 'Nueva acta pendiente de aprobaciÃ³n',
-      message: `El acta ${acta.consecutivo} requiere su aprobaciÃ³n de Ã¡rea.`,
+    await notifyAreaApprovers(pool, acta.area, {
+      title: 'Nueva acta para aprobación del área',
+      message: `El acta ${acta.consecutivo} está pendiente de revisión y aprobación por parte del aprobador del área ${acta.area}. Ingresa al sistema para revisarla.`,
+      emailStage: 'Revisión del aprobador de área',
       type: 'info',
       actaId: id,
       actaReference: acta.consecutivo,
@@ -390,12 +424,12 @@ export async function submitActa(req, res) {
     const requester = await getActiveUser(pool, acta.solicitanteId);
     if (requester) {
       await createAndSendNotification(pool, requester, {
-        title: 'Acta enviada a aprobaciÃ³n',
-        message: `El acta ${acta.consecutivo} fue enviada correctamente y estÃ¡ pendiente de revisiÃ³n del aprobador de Ã¡rea.`,
+        title: 'Acta enviada a aprobación',
+        message: `El acta ${acta.consecutivo} fue enviada correctamente y está pendiente de revisión del aprobador de área.`,
         type: 'success', actaId: id, actaReference: acta.consecutivo,
       });
     }
-    res.json({ message: 'Acta enviada a aprobaciÃ³n' });
+    res.json({ message: 'Acta enviada a aprobación' });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -410,9 +444,25 @@ export async function approveActa(req, res) {
 
     const actaResult = await pool.request()
       .input('id', id)
-      .query('SELECT consecutivo, solicitanteId, requiereCostos FROM actas WHERE id = @id');
+      .query('SELECT consecutivo, solicitanteId, status, area FROM actas WHERE id = @id');
     const acta = actaResult.recordset[0];
     if (!acta) return res.status(404).json({ error: 'Acta no encontrada' });
+
+    const expectedStepByStatus = {
+      pendiente_aprobacion_area: 'area',
+      pendiente_hse: 'hse',
+    };
+    const expectedStep = expectedStepByStatus[acta.status];
+    if (!expectedStep || paso !== expectedStep) {
+      return res.status(409).json({ error: 'El acta aún no ha llegado a este paso de aprobación' });
+    }
+    const requiredRoleByStep = { area: 'aprobador_area', hse: 'hse' };
+    if (req.user.rol !== requiredRoleByStep[paso]) {
+      return res.status(403).json({ error: 'Este usuario no es el aprobador asignado para este paso' });
+    }
+    if (paso === 'area' && !(await userBelongsToArea(pool, req.user.id, acta.area))) {
+      return res.status(403).json({ error: 'Este usuario no está asignado al área del acta' });
+    }
 
     const aprobId = `ap${Date.now()}`;
     await pool.request()
@@ -427,27 +477,22 @@ export async function approveActa(req, res) {
         WHERE actaId = @actaId AND paso = @paso
       `);
 
-    const nextStatus = paso === 'area'
-      ? acta.requiereCostos
-        ? 'pendiente_costos'
-        : 'pendiente_hse'
-      : paso === 'costos' ? 'pendiente_hse' : 'aprobada';
+    const nextStatus = paso === 'area' ? 'pendiente_hse' : 'aprobada';
 
     await pool.request()
       .input('id', id)
       .input('status', nextStatus)
       .query('UPDATE actas SET status = @status, updatedAt = GETDATE() WHERE id = @id');
 
-    const nextRole = nextStatus === 'pendiente_costos' ? 'costos'
-      : nextStatus === 'pendiente_hse' ? 'hse' : null;
-    const nextRoleLabel = nextRole === 'costos' ? 'Costos' : 'HSE & S';
+    const nextRole = nextStatus === 'pendiente_hse' ? 'hse' : null;
+    const nextRoleLabel = 'HSE & S';
 
-    // El servidor genera el aviso. Así, si Costos aprueba, HSE recibe el
-    // correo aunque quien aprobó cierre el navegador inmediatamente.
+    // El correo al siguiente aprobador sale después de persistir el cambio de estado.
     if (nextRole) {
       await notifyRole(pool, nextRole, {
-        title: 'Acta pendiente de tu aprobación',
-        message: `El acta ${acta.consecutivo} está pendiente de tu aprobación en ${nextRoleLabel}. Ingresa al sistema para revisarla.`,
+        title: 'Acta aprobada por el área: revisión HSE pendiente',
+        message: `El aprobador del área ${acta.area} aprobó el acta ${acta.consecutivo}. Ahora está pendiente de tu revisión por el equipo ${nextRoleLabel}. Ingresa al sistema para continuar el flujo de aprobación.`,
+        emailStage: 'Revisión de HSE & S',
         type: 'info',
         actaId: id,
         actaReference: acta.consecutivo,
@@ -457,7 +502,7 @@ export async function approveActa(req, res) {
     const requester = await getActiveUser(pool, acta.solicitanteId);
     if (requester) {
       const statusMessage = nextRole
-        ? `fue aprobada en ${paso === 'area' ? 'Aprobación de Área' : 'Costos'} y ahora está pendiente de revisión por ${nextRoleLabel}.`
+        ? `fue aprobada en el área y ahora está pendiente de revisión por ${nextRoleLabel}.`
         : 'fue aprobada completamente.';
       await createAndSendNotification(pool, requester, {
         title: 'Actualización de tu acta',
@@ -482,9 +527,20 @@ export async function rejectActa(req, res) {
     const pool = getPool();
 
     const actaResult = await pool.request().input('id', id)
-      .query('SELECT consecutivo, solicitanteId FROM actas WHERE id = @id');
+      .query('SELECT consecutivo, solicitanteId, status, area FROM actas WHERE id = @id');
     const acta = actaResult.recordset[0];
     if (!acta) return res.status(404).json({ error: 'Acta no encontrada' });
+    const expectedStepByStatus = { pendiente_aprobacion_area: 'area', pendiente_hse: 'hse' };
+    if (expectedStepByStatus[acta.status] !== paso) {
+      return res.status(409).json({ error: 'El acta aún no ha llegado a este paso de aprobación' });
+    }
+    const requiredRoleByStep = { area: 'aprobador_area', hse: 'hse' };
+    if (req.user.rol !== requiredRoleByStep[paso]) {
+      return res.status(403).json({ error: 'Este usuario no es el aprobador asignado para este paso' });
+    }
+    if (paso === 'area' && !(await userBelongsToArea(pool, req.user.id, acta.area))) {
+      return res.status(403).json({ error: 'Este usuario no está asignado al área del acta' });
+    }
 
     await pool.request()
       .input('actaId', id)
@@ -501,6 +557,15 @@ export async function rejectActa(req, res) {
       .input('id', id)
       .query("UPDATE actas SET status = 'rechazada', updatedAt = GETDATE() WHERE id = @id");
 
+    const requester = await getActiveUser(pool, acta.solicitanteId);
+    if (requester) {
+      await createAndSendNotification(pool, requester, {
+        title: 'Acta rechazada',
+        message: `El acta ${acta.consecutivo} fue rechazada por ${aprobador}. Motivo: ${motivo}`,
+        type: 'error', actaId: id, actaReference: acta.consecutivo,
+      });
+    }
+
     res.json({ message: 'Acta rechazada' });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -513,9 +578,20 @@ export async function returnActa(req, res) {
     const { paso, aprobador, ajustes } = req.body;
     const pool = getPool();
     const actaResult = await pool.request().input('id', id)
-      .query('SELECT consecutivo, solicitanteId FROM actas WHERE id = @id');
+      .query('SELECT consecutivo, solicitanteId, status, area FROM actas WHERE id = @id');
     const acta = actaResult.recordset[0];
     if (!acta) return res.status(404).json({ error: 'Acta no encontrada' });
+    const expectedStepByStatus = { pendiente_aprobacion_area: 'area', pendiente_hse: 'hse' };
+    if (expectedStepByStatus[acta.status] !== paso) {
+      return res.status(409).json({ error: 'El acta aún no ha llegado a este paso de aprobación' });
+    }
+    const requiredRoleByStep = { area: 'aprobador_area', hse: 'hse' };
+    if (req.user.rol !== requiredRoleByStep[paso]) {
+      return res.status(403).json({ error: 'Este usuario no es el aprobador asignado para este paso' });
+    }
+    if (paso === 'area' && !(await userBelongsToArea(pool, req.user.id, acta.area))) {
+      return res.status(403).json({ error: 'Este usuario no está asignado al área del acta' });
+    }
 
     await pool.request()
       .input('actaId', id).input('paso', paso).input('aprobador', aprobador).input('ajustes', JSON.stringify(ajustes || []))

@@ -5,7 +5,7 @@ import {
 } from "lucide-react";
 import {
   PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid,
-  Tooltip, ResponsiveContainer, AreaChart, Area, Legend, LabelList
+  Tooltip, ResponsiveContainer, AreaChart, Area, Legend, LabelList, BarChart, Bar
 } from "recharts";
 import { useAuth } from "../../context/AuthContext";
 import { useApp } from "../../context/AppContext";
@@ -43,16 +43,14 @@ function buildMonthlyData(actas: ReturnType<typeof useApp>["actas"]) {
 
 export default function DashboardPage() {
   const { user } = useAuth();
-  const { actas, users, solicitudes, getUserNotifications } = useApp();
+  const { actas, users, solicitudes } = useApp();
   const navigate = useNavigate();
 
   if (!user) return null;
 
   const myActas = actas.filter((a) => a.solicitanteId === user.id);
-  const unread = getUserNotifications(user.id).filter((n) => !n.read).length;
-
   // Admin dashboard
-  if (user.rol === "administrador") {
+  if (user.rol === "administrador" || user.rol === "admin_global") {
     const pendingSol = solicitudes.filter((s) => s.status === "pendiente").length;
     const empresaData = [
       { name: "Humax", value: actas.filter((a) => a.empresa === "Humax").length },
@@ -62,15 +60,24 @@ export default function DashboardPage() {
 
     const monthlyData = buildMonthlyData(actas);
     const recentActas = [...actas].sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()).slice(0, 5);
-    const inProcess = actas.filter((a) => ["pendiente_aprobacion_area", "pendiente_costos", "pendiente_hse"].includes(a.status)).length;
-    const approvalRate = actas.length ? Math.round((actas.filter((a) => a.status === "aprobada").length / actas.length) * 100) : 0;
+    const inProcess = actas.filter((a) => ["pendiente_aprobacion_area", "pendiente_hse"].includes(a.status)).length;
+    const returnedActas = actas.filter((a) => a.status === "devuelta_ajustes").length;
+    const materialTypeCounts = new Map<string, number>();
+    actas.forEach((acta) => {
+      const types = new Set((acta.materiales?.length
+        ? acta.materiales.map((material) => material.tipoMaterial)
+        : [acta.tipoMaterial]
+      ).map((type) => String(type || "Otro").trim() || "Otro"));
+      types.forEach((type) => materialTypeCounts.set(type, (materialTypeCounts.get(type) || 0) + 1));
+    });
+    const materialTypeData = [...materialTypeCounts].map(([tipo, total]) => ({ tipo, total }));
 
     return (
       <div className="space-y-6">
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div>
             <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-teal-700">Centro de control</p>
-            <h1 className="text-2xl font-bold text-slate-900">Dashboard Administrativo</h1>
+            <h1 className="text-2xl font-bold text-slate-900">{user.rol === "admin_global" ? "Dashboard Global" : "Dashboard Administrativo"}</h1>
             <p className="text-sm text-slate-500 mt-1">Bienvenido, {user.nombre}. Este es el estado general del sistema.</p>
           </div>
           <div className="flex items-center gap-2 rounded-full border border-teal-100 bg-teal-50 px-3 py-1.5 text-xs font-semibold text-teal-800">
@@ -81,13 +88,13 @@ export default function DashboardPage() {
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <div className="dashboard-insight"><span className="dashboard-insight-icon bg-teal-50 text-teal-700"><TrendingUp size={16} /></span><span><b>{actas.length}</b><small>Actas registradas</small></span></div>
           <div className="dashboard-insight"><span className="dashboard-insight-icon bg-sky-50 text-sky-700"><Clock size={16} /></span><span><b>{inProcess}</b><small>En flujo de aprobación</small></span></div>
-          <div className="dashboard-insight"><span className="dashboard-insight-icon bg-emerald-50 text-emerald-700"><CheckCircle size={16} /></span><span><b>{approvalRate}%</b><small>Tasa de aprobación</small></span></div>
+          <div className="dashboard-insight"><span className="dashboard-insight-icon bg-amber-50 text-amber-700"><AlertTriangle size={16} /></span><span><b>{returnedActas}</b><small>Actas devueltas</small></span></div>
         </div>
 
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <StatCard label="Solicitudes Pendientes" value={pendingSol} icon={<Users size={20} />} iconColor="bg-amber-50 text-amber-600"
             onClick={() => navigate("/usuarios")} delta={pendingSol > 0 ? `${pendingSol} por aprobar` : undefined} />
-          <StatCard label="Actas en Proceso" value={actas.filter((a) => ["pendiente_aprobacion_area", "pendiente_costos", "pendiente_hse"].includes(a.status)).length}
+          <StatCard label="Actas en Proceso" value={actas.filter((a) => ["pendiente_aprobacion_area", "pendiente_hse"].includes(a.status)).length}
             icon={<Clock size={20} />} iconColor="bg-blue-50 text-blue-700" onClick={() => navigate("/actas")} />
           <StatCard label="Actas Aprobadas" value={actas.filter((a) => a.status === "aprobada").length}
             icon={<CheckCircle size={20} />} iconColor="bg-green-50 text-green-700" onClick={() => navigate("/actas")} />
@@ -130,6 +137,24 @@ export default function DashboardPage() {
           </ChartCard>
         </div>
 
+        {user.rol === "admin_global" && (
+          <ChartCard title="Actas por tipo de material" description="Cantidad de actas asociadas a cada tipo de material" label="Materiales">
+            <div className="chart-visual chart-visual-bar">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={materialTypeData} margin={{ top: 16, right: 12, left: -12, bottom: 0 }}>
+                  <CartesianGrid vertical={false} stroke="#DCEBED" strokeDasharray="2 6" />
+                  <XAxis dataKey="tipo" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: "#647B83" }} />
+                  <YAxis allowDecimals={false} axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: "#647B83" }} />
+                  <Tooltip content={<ChartTooltip />} />
+                  <Bar dataKey="total" name="Actas" fill="#0F766E" radius={[6, 6, 0, 0]}>
+                    <LabelList dataKey="total" position="top" fill="#0F766E" fontSize={11} fontWeight={700} />
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </ChartCard>
+        )}
+
         <div className="bg-white rounded-xl border border-slate-200">
           <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200">
             <h2 className="text-sm font-semibold text-slate-700">Actividad reciente</h2>
@@ -157,7 +182,7 @@ export default function DashboardPage() {
   // Solicitante dashboard
   if (user.rol === "solicitante") {
     const borradores = myActas.filter((a) => a.status === "borrador").length;
-    const pendientes = myActas.filter((a) => ["pendiente_aprobacion_area", "pendiente_costos", "pendiente_hse", "enviada"].includes(a.status)).length;
+    const pendientes = myActas.filter((a) => ["pendiente_aprobacion_area", "pendiente_hse", "enviada"].includes(a.status)).length;
     const rechazadas = myActas.filter((a) => a.status === "rechazada").length;
     const aprobadas = myActas.filter((a) => a.status === "aprobada").length;
     const devueltas = myActas.filter((a) => a.status === "devuelta_ajustes").length;

@@ -165,7 +165,7 @@ export interface Acta {
   ordenProduccion: string;
   sustanciaControlada: boolean;
   clasificacion: ClasificacionMaterial;
-  fechaVencimiento: string;
+  fechaVencimiento: string | null;
   registroINVIMA: string;
   estadoInvima?: "Vigente" | "Vencido" | "Cancelado" | "N/A";
   pesoKg: number;
@@ -196,7 +196,7 @@ export interface ActaMaterial {
   ordenProduccion: string;
   sustanciaControlada: boolean;
   clasificacion: ClasificacionMaterial;
-  fechaVencimiento: string;
+  fechaVencimiento: string | null;
   registroINVIMA: string;
   estadoInvima?: "Vigente" | "Vencido" | "Cancelado" | "N/A";
   invimaProductId?: string;

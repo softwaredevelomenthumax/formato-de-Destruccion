@@ -67,6 +67,8 @@ export default function ActaDetailPage() {
   const safeCosto = Number.isFinite(Number(acta.costoDestruccion)) ? Number(acta.costoDestruccion) : 0;
   const safePeso = Number.isFinite(Number(acta.pesoKg)) ? Number(acta.pesoKg) : 0;
   const safeCantidad = Number.isFinite(Number(acta.cantidadUnidades)) ? Number(acta.cantidadUnidades) : 0;
+  const priceEligibleTypes = new Set(["UNBW", "ROH", "FERT", "VERP", "ME"]);
+  const normalizeArea = (value?: string) => String(value || "").trim().toLocaleLowerCase("es-CO").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, " ");
 
   const formatFecha = (value?: string | null) => {
     if (!value) return "—";
@@ -77,13 +79,12 @@ export default function ActaDetailPage() {
 
   const getPasoForRole = () => {
     if (user.rol === "aprobador_area") return "area" as const;
-    if (user.rol === "costos") return "costos" as const;
     if (user.rol === "hse") return "hse" as const;
     return null;
   };
 
   const paso = getPasoForRole();
-  const canApprove = paso && acta.status === `pendiente_${paso === "area" ? "aprobacion_area" : paso}` && acta.solicitanteId !== user.id;
+  const canApprove = paso && acta.status === `pendiente_${paso === "area" ? "aprobacion_area" : paso}` && acta.solicitanteId !== user.id && (paso !== "area" || normalizeArea(user.area) === normalizeArea(acta.area));
   const canEdit = user.rol === "solicitante" && acta.solicitanteId === user.id && (acta.status === "borrador" || acta.status === "devuelta_ajustes");
   const canSend = user.rol === "solicitante" && acta.solicitanteId === user.id && acta.status === "borrador";
   const currentMaterial = materialList[materialPage] ?? materialList[0];
@@ -183,7 +184,7 @@ export default function ActaDetailPage() {
             <Grid2>
               <Row label="Empresa" value={acta.empresa} />
               <Row label="Centro de Costos" value={acta.centroCostos} />
-              <Row label="Fecha" value={acta.fecha} />
+              <Row label="Fecha" value={String(acta.fecha || "").slice(0, 10).replace(/^(\d{4})-(\d{2})-(\d{2})$/, "$3/$2/$1")} />
               <Row label="Solicitante" value={acta.solicitanteNombre} />
               <Row label="Responsable" value={acta.responsable} />
               <Row label="Área" value={acta.area} />
@@ -223,12 +224,14 @@ export default function ActaDetailPage() {
                   <Row label="Número de Lote" value={currentMaterial.numeroLote} />
                   <Row label="Orden de Producción" value={currentMaterial.ordenProduccion} />
                   <Row label="Clasificación" value={CLASIFICACION_LABELS[currentMaterial.clasificacion]} />
-                  <Row label="Fecha Vencimiento" value={currentMaterial.fechaVencimiento} />
+                  {currentMaterial.fechaVencimiento && <Row label="Fecha de vencimiento" value={currentMaterial.fechaVencimiento} />}
                   <Row label="Sustancia Controlada" value={currentMaterial.sustanciaControlada ? "Sí" : "No"} />
                   <Row label="Peso (kg)" value={currentMaterial.pesoKg == null ? "No especificado" : `${currentMaterial.pesoKg} kg`} />
                   <Row label="Unidades" value={currentMaterial.cantidadUnidades == null ? "No especificado" : String(currentMaterial.cantidadUnidades)} />
-                  <Row label="Precio unitario" value={currentMaterial.costoUnitario == null ? "No especificado" : `COP ${Number(currentMaterial.costoUnitario).toLocaleString("es-CO")}`} />
-                  <Row label="Total del material" value={currentMaterial.costoTotal == null ? "No especificado" : `COP ${Number(currentMaterial.costoTotal).toLocaleString("es-CO")}`} />
+                  {priceEligibleTypes.has(String(currentMaterial.tipoMaterial || "").trim().toUpperCase()) && <>
+                    <Row label="Precio del material a destruir" value={currentMaterial.costoUnitario == null ? "No especificado" : `COP ${Number(currentMaterial.costoUnitario).toLocaleString("es-CO")}`} />
+                    <Row label="Total del material" value={currentMaterial.costoTotal == null ? "No especificado" : `COP ${Number(currentMaterial.costoTotal).toLocaleString("es-CO")}`} />
+                  </>}
                 </Grid2>
               </div>
             </div>
@@ -239,7 +242,6 @@ export default function ActaDetailPage() {
               <Row label="Peso (kg)" value={`${safePeso} kg`} />
               <Row label="Unidades" value={String(safeCantidad)} />
               <Row label="Valor total a destruir" value={safeCosto === 0 ? "No aplica" : `COP ${safeCosto.toLocaleString("es-CO")}`} />
-              <Row label="Requiere Costos" value={acta.requiereCostos ? "Sí" : "No"} />
             </Grid2>
           </InfoCard>
 
@@ -298,7 +300,6 @@ export default function ActaDetailPage() {
             <div className="space-y-1">
               <Row label="Creado" value={formatFecha(acta.createdAt)} />
               <Row label="Actualizado" value={formatFecha(acta.updatedAt)} />
-              <Row label="ID" value={acta.id || "—"} />
             </div>
           </div>
         </div>

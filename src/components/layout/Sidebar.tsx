@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { NavLink } from "react-router";
 import {
   LayoutDashboard, FileText, FilePlus, Users, Settings, BarChart3,
-  Search, Bell, BookOpen, Package, LogOut, ChevronRight,
+  Search, BookOpen, Package, LogOut, ChevronRight,
   ClipboardCheck, Building2, PanelLeftClose, PanelLeftOpen,
   Sun, Moon, UserCircle2
 } from "lucide-react";
@@ -39,6 +39,10 @@ const COLLAPSED_KEY = "add-sidebar-collapsed";
 
 type Theme = "light" | "dark";
 
+function normalizeArea(value?: string) {
+  return String(value || "").trim().toLocaleLowerCase("es-CO").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, " ");
+}
+
 function getInitialTheme(): Theme {
   if (typeof window === "undefined") return "light";
 
@@ -72,7 +76,7 @@ interface SidebarProps {
 
 export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps) {
   const { user, logout } = useAuth();
-  const { getUserNotifications, solicitudes } = useApp();
+  const { actas, solicitudes } = useApp();
 
   const [collapsed, setCollapsed] = useState<boolean>(getInitialCollapsed);
   const [theme, setTheme] = useState<Theme>(getInitialTheme);
@@ -101,8 +105,12 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps) {
   if (!user) return null;
 
   const safeSolicitudes = Array.isArray(solicitudes) ? solicitudes : [];
-  const unread = getUserNotifications(user.id).filter((n) => !n.read).length;
   const pendingSolicitudes = safeSolicitudes.filter((s) => s.status === "pendiente").length;
+  const pendingApprovals = user.rol === "aprobador_area"
+    ? actas.filter((acta) => acta.status === "pendiente_aprobacion_area" && normalizeArea(acta.area) === normalizeArea(user.area)).length
+    : user.rol === "hse"
+      ? actas.filter((acta) => acta.status === "pendiente_hse").length
+      : 0;
 
   const filteredNav = NAV_ITEMS.filter((item) => item.roles.includes(user.rol));
   const toggleTheme = () => setTheme((t) => (t === "dark" ? "light" : "dark"));
@@ -149,7 +157,7 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps) {
             end={item.to === "/dashboard" || item.to === "/actas"}
             title={collapsed ? item.label : undefined}
             className={({ isActive }) =>
-              `group flex items-center gap-3 rounded-lg text-sm font-medium transition-all ${
+              `group relative flex items-center gap-3 rounded-lg text-sm font-medium transition-all ${
                 collapsed ? "justify-center px-2 py-2.5" : "px-3 py-2.5"
               } ${
                 isActive
@@ -161,9 +169,9 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps) {
           >
             <span className="shrink-0">{item.icon}</span>
             {!collapsed && <span className="flex-1 truncate">{item.label}</span>}
-            {!collapsed && item.to === "/notificaciones" && unread > 0 && (
-              <span className="flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-xs font-bold text-white">
-                {unread > 9 ? "9+" : unread}
+            {item.to === "/aprobaciones" && pendingApprovals > 0 && (
+              <span className={`${collapsed ? "absolute right-1 top-1 h-2.5 w-2.5 rounded-full p-0" : "flex h-5 min-w-5 items-center justify-center rounded-full px-1 text-xs"} bg-red-500 font-bold text-white`}>
+                {!collapsed && (pendingApprovals > 99 ? "99+" : pendingApprovals)}
               </span>
             )}
             {!collapsed && item.to === "/usuarios" && pendingSolicitudes > 0 && ["administrador", "admin_global"].includes(user.rol) && (
@@ -175,32 +183,6 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps) {
           </NavLink>
         ))}
 
-        {user.rol !== "costos" && user.rol !== "planeacion" && <NavLink
-          to="/notificaciones"
-          title={collapsed ? "Notificaciones" : undefined}
-          className={({ isActive }) =>
-            `group relative flex items-center gap-3 rounded-lg text-sm font-medium transition-all ${
-              collapsed ? "justify-center px-2 py-2.5" : "px-3 py-2.5"
-            } ${
-              isActive
-                ? "bg-teal-400 text-slate-950 shadow-[0_8px_18px_rgba(45,212,191,0.18)]"
-                : "text-slate-400 hover:bg-slate-800 hover:text-white"
-            }`
-          }
-            onClick={onMobileClose}
-        >
-          <Bell size={18} />
-          {!collapsed && <span className="flex-1">Notificaciones</span>}
-          {unread > 0 && (
-            <span
-              className={`flex items-center justify-center rounded-full bg-red-500 text-xs font-bold text-white ${
-                collapsed ? "absolute right-1 top-1 h-4 w-4" : "h-4 min-w-4 px-1"
-              }`}
-            >
-              {unread > 9 ? "9+" : unread}
-            </span>
-          )}
-        </NavLink>}
       </nav>
 
       {/* Interruptor de modo claro/oscuro */}

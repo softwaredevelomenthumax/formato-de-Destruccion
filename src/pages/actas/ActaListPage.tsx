@@ -15,6 +15,12 @@ const STATUS_OPTIONS: { value: ActaStatus | ""; label: string }[] = [
   ...Object.entries(ACTA_STATUS_LABELS).map(([v, l]) => ({ value: v as ActaStatus, label: l })),
 ];
 
+const formatDate = (value?: string | null) => {
+  const date = String(value || "").slice(0, 10);
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
+  return match ? `${match[3]}/${match[2]}/${match[1]}` : date || "—";
+};
+
 export default function ActaListPage() {
   const { user } = useAuth();
   const { actas, deleteActa } = useApp();
@@ -50,13 +56,16 @@ export default function ActaListPage() {
   const pageActas = visibleActas.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
   const handleDelete = async (id: string) => {
-    const ok = await deleteActa(id);
-    if (ok) toast.success("Acta eliminada correctamente");
-    else toast.error("No se puede eliminar esta acta");
-    setDeleteId(null);
+    try {
+      await deleteActa(id);
+      toast.success("Acta eliminada correctamente");
+      setDeleteId(null);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "No se puede eliminar esta acta");
+    }
   };
 
-  const canDelete = () => user?.rol === "admin_global";
+  const canDelete = ["admin_global", "administrador_global", "global_admin"].includes(user?.rol || "");
   return (
     <div className="space-y-5">
       <div className="flex items-center justify-between">
@@ -65,6 +74,12 @@ export default function ActaListPage() {
           <p className="text-sm text-slate-500 mt-0.5">{visibleActas.length} acta(s) encontrada(s)</p>
         </div>
       </div>
+
+      {user?.rol === "administrador" && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          Tu cuenta tiene el rol <strong>Administrador</strong>. Para eliminar actas, debe tener el rol <strong>Administrador global</strong>.
+        </div>
+      )}
 
       {/* Filters */}
       <div className="bg-white rounded-xl border border-slate-200 p-4">
@@ -125,7 +140,7 @@ export default function ActaListPage() {
                     </td>
                     <td className="px-4 py-3 text-slate-600">{acta.empresa}</td>
                     <td className="px-4 py-3 text-slate-600">{acta.solicitanteNombre}</td>
-                    <td className="px-4 py-3 text-slate-500 text-xs">{acta.fecha}</td>
+                    <td className="px-4 py-3 text-slate-500 text-xs">{formatDate(acta.fecha)}</td>
                     <td className="px-4 py-3"><ActaStatusBadge status={acta.status} /></td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-1 justify-end">
@@ -136,7 +151,7 @@ export default function ActaListPage() {
                         >
                           <Eye size={15} />
                         </button>
-                        {canDelete() && (
+                        {canDelete && (
                           <button
                             onClick={() => setDeleteId(acta.id)}
                             className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
