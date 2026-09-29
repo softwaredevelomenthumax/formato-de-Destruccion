@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router";
 import {
   ArrowLeft, CheckCircle2, XCircle, RotateCcw, Send, Edit2,
-  FileText, History, Clock, Plus, Trash2
+  FileText, History, Clock, Plus, Trash2, Mail
 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import { useApp } from "../../context/AppContext";
@@ -14,6 +14,7 @@ import { format } from "date-fns";
 import { es } from "date-fns/locale";
 import { toast } from "sonner";
 import type { AjusteField } from "../../types";
+import { api } from "../../services/api";
 
 export default function ActaDetailPage() {
   const { id } = useParams();
@@ -23,6 +24,7 @@ export default function ActaDetailPage() {
 
   const [showApprove, setShowApprove] = useState(false);
   const [isApproving, setIsApproving] = useState(false);
+  const [isResendingHse, setIsResendingHse] = useState(false);
   const [showReject, setShowReject] = useState(false);
   const [showReturn, setShowReturn] = useState(false);
   const [approveComment, setApproveComment] = useState("");
@@ -87,14 +89,48 @@ export default function ActaDetailPage() {
   const canApprove = paso && acta.status === `pendiente_${paso === "area" ? "aprobacion_area" : paso}` && acta.solicitanteId !== user.id && (paso !== "area" || normalizeArea(user.area) === normalizeArea(acta.area));
   const canEdit = user.rol === "solicitante" && acta.solicitanteId === user.id && (acta.status === "borrador" || acta.status === "devuelta_ajustes");
   const canSend = user.rol === "solicitante" && acta.solicitanteId === user.id && acta.status === "borrador";
+  const canResendHse = acta.status === "pendiente_hse" && ["administrador", "admin_global", "aprobador_area"].includes(user.rol);
+
+  const handleResendHse = async () => {
+    setIsResendingHse(true);
+    try {
+      const result = await api.notifyHse(acta.id);
+      const failed = result.emailNotifications?.filter((delivery: { sent: boolean }) => !delivery.sent) ?? [];
+      if (failed.length) {
+        toast.error("El servidor no pudo enviar el correo a todos los usuarios HSE. Revisa el registro del backend.");
+      } else {
+        toast.success("Se envió nuevamente el correo de aprobación a HSE.");
+      }
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "No se pudo reenviar el correo a HSE");
+    } finally {
+      setIsResendingHse(false);
+    }
+  };
   const currentMaterial = materialList[materialPage] ?? materialList[0];
 
   const handleApprove = async () => {
     if (!paso || isApproving) return;
     setIsApproving(true);
     try {
-      await approveActa(acta.id, paso, user.username, approveComment);
-      toast.success("Acta aprobada exitosamente");
+      const result = await approveActa(acta.id, paso, user.username, approveComment);
+      const failedDeliveries = result.emailNotifications?.filter((delivery) => !delivery.sent) ?? [];
+      if (paso === "area" && failedDeliveries.length > 0) {
+        const reasonMessages: Record<string, string> = {
+          no_email: "hay usuarios HSE sin correo registrado",
+          not_configured: "el correo del servidor no está configurado",
+          no_sender: "falta configurar el remitente del correo",
+          smtp_timeout: "el servidor SMTP no respondió",
+          send_failed: "el servidor SMTP rechazó el correo",
+          notification_failed: "no se pudo crear la notificación de correo",
+        };
+        const reasons = [...new Set(failedDeliveries.map((delivery) => reasonMessages[delivery.reason || ""] || "ocurrió un error al enviar el correo"))];
+        toast.warning(`Acta aprobada, pero no llegó el correo a HSE: ${reasons.join("; ")}.`);
+      } else if (paso === "area" && !result.emailNotifications?.length) {
+        toast.warning("Acta aprobada, pero no se encontraron usuarios HSE activos para enviar el correo.");
+      } else {
+        toast.success(paso === "area" ? "Acta aprobada y correo enviado a HSE" : "Acta aprobada exitosamente");
+      }
       setShowApprove(false);
       setApproveComment("");
     } catch (error) {
@@ -151,6 +187,11 @@ export default function ActaDetailPage() {
           <p className="text-sm text-slate-500 mt-0.5">{acta.descripcion}</p>
         </div>
         <div className="flex gap-2 shrink-0">
+          {canResendHse && (
+            <button onClick={handleResendHse} disabled={isResendingHse} className="flex items-center gap-2 px-3 py-2 text-sm font-medium border border-blue-300 text-blue-700 rounded-lg hover:bg-blue-50 disabled:opacity-60">
+              <Mail size={14} /> {isResendingHse ? "Enviando…" : "Reenviar aviso a HSE"}
+            </button>
+          )}
           {canEdit && (
             <button onClick={() => navigate(`/actas/${acta.id}/editar`)} className="flex items-center gap-2 px-4 py-2 text-sm font-medium border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50">
               <Edit2 size={14} /> Corregir

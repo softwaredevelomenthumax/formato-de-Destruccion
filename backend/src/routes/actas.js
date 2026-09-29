@@ -11,6 +11,7 @@ router.put('/:id', requireRole('admin_global', 'solicitante', 'aprobador_area', 
 router.delete('/:id', requireRole('admin_global', 'administrador_global', 'global_admin'), controller.deleteActa);
 router.post('/:id/submit', requireRole('solicitante'), controller.submitActa);
 router.post('/:id/approve', requireRole('aprobador_area', 'hse'), controller.approveActa);
+router.post('/:id/notify-hse', requireRole('administrador', 'admin_global', 'aprobador_area'), controller.resendHseEmail);
 router.post('/:id/reject', requireRole('aprobador_area', 'hse'), controller.rejectActa);
 router.post('/:id/return', requireRole('aprobador_area', 'hse'), controller.returnActa);
 

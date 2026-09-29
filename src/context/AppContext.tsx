@@ -40,7 +40,7 @@ interface AppContextType {
   updateActa: (id: string, updates: Partial<Acta>, histEntry?: Omit<ActaHistorial, "id">) => Promise<void>;
   deleteActa: (id: string) => Promise<boolean>;
   sendActa: (id: string, userId: string, userName: string) => Promise<void>;
-  approveActa: (actaId: string, paso: ActaAprobacion["paso"], aprobador: string, comentario: string) => Promise<void>;
+  approveActa: (actaId: string, paso: ActaAprobacion["paso"], aprobador: string, comentario: string) => Promise<{ emailNotifications?: Array<{ sent: boolean; reason?: string }> }>;
   rejectActa: (actaId: string, paso: ActaAprobacion["paso"], aprobador: string, motivo: string) => Promise<void>;
   returnActa: (actaId: string, paso: ActaAprobacion["paso"], aprobador: string, ajustes: ActaAprobacion["ajustes"]) => Promise<void>;
 
@@ -57,6 +57,7 @@ interface AppContextType {
   updateInvimaProduct: (id: string, updates: Partial<InvimaProduct>) => Promise<void>;
   deleteInvimaProduct: (id: string) => Promise<void>;
   loadData: () => Promise<void>;
+  refreshActas: () => Promise<void>;
 }
 
 const AppContext = createContext<AppContextType | null>(null);
@@ -108,6 +109,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setLoading(false);
     }
   }, [user?.rol]);
+
+  const refreshActas = useCallback(async () => {
+    try {
+      const data = await api.getActas();
+      setActas(asArray<Acta>(data));
+    } catch (error) {
+      console.error("Error actualizando actas:", error);
+    }
+  }, []);
 
   // Cargar datos al montar
   useEffect(() => {
@@ -246,9 +256,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const approveActa = async (actaId: string, paso: ActaAprobacion["paso"], aprobador: string, comentario: string) => {
     try {
       const acta = actas.find((a) => a.id === actaId);
-      if (!acta) return;
+      if (!acta) throw new Error("No se encontró el acta para aprobar");
 
-      await api.approveActa(actaId, { paso, aprobador, comentario });
+      const approvalResult = await api.approveActa(actaId, { paso, aprobador, comentario });
 
       // Actualizar estado local
       let nextStatus: ActaStatus = acta.status;
@@ -265,6 +275,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setActas((current) => asArray<Acta>(current).map((a) =>
         a.id === actaId ? { ...a, status: nextStatus, aprobaciones: updatedAprobaciones } : a
       ));
+
+      return approvalResult;
 
       // El backend crea y envía estas notificaciones para que el correo no
       // dependa de que el navegador de quien aprobó siga abierto.
@@ -418,7 +430,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       createUser, updateUser, deleteUser, registerSolicitud, approveSolicitud, rejectSolicitud,
       createActa, updateActa, deleteActa, sendActa, approveActa, rejectActa, returnActa,
       markNotificationRead, deleteNotification, markAllNotificationsRead, addNotification, getUserNotifications, loadNotifications,
-      addInvimaProduct, updateInvimaProduct, deleteInvimaProduct, loadData,
+      addInvimaProduct, updateInvimaProduct, deleteInvimaProduct, loadData, refreshActas,
     }}>
       {children}
     </AppContext.Provider>

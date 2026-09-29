@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { useNavigate } from "react-router";
 import { Clock, Eye } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
@@ -12,8 +13,27 @@ function normalizeArea(value?: string) {
 
 export default function AprobacionesPage() {
   const { user } = useAuth();
-  const { actas } = useApp();
+  const { actas, refreshActas } = useApp();
   const navigate = useNavigate();
+
+  useEffect(() => {
+    if (user?.rol !== "hse") return;
+
+    void refreshActas();
+    const refreshInterval = window.setInterval(() => void refreshActas(), 30000);
+    const handleFocus = () => void refreshActas();
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") void refreshActas();
+    };
+
+    window.addEventListener("focus", handleFocus);
+    document.addEventListener("visibilitychange", handleVisibility);
+    return () => {
+      window.clearInterval(refreshInterval);
+      window.removeEventListener("focus", handleFocus);
+      document.removeEventListener("visibilitychange", handleVisibility);
+    };
+  }, [user?.rol, refreshActas]);
 
   if (!user) return null;
 

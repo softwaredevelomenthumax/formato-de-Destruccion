@@ -7,6 +7,12 @@ import { sendNotificationEmail } from '../services/emailService.js';
 export async function createUser(req, res) {
   try {
     const { username, password, nombre, email, area, rol } = req.body;
+    if (!username?.trim() || !password || !nombre?.trim() || !area?.trim() || !rol) {
+      return res.status(400).json({ error: 'Complete los campos obligatorios del usuario' });
+    }
+    if (rol === 'admin_global' && req.user.rol !== 'admin_global') {
+      return res.status(403).json({ error: 'Solo el administrador global puede asignar ese rol' });
+    }
     const pool = getPool();
 
     // Verificar que el usuario no exista
@@ -18,7 +24,7 @@ export async function createUser(req, res) {
       return res.status(400).json({ error: 'Usuario ya existe' });
     }
 
-    const id = `u${Date.now()}`;
+    const id = `u${uuidv4()}`;
     const hashedPassword = await bcryptjs.hash(password, 10);
 
     await pool.request()
@@ -34,7 +40,7 @@ export async function createUser(req, res) {
         VALUES (@id, @username, @password, @nombre, @email, @area, @rol)
       `);
 
-    res.status(201).json({ id, username, nombre, email, area, rol, status: 'activo' });
+    res.status(201).json({ id, username, nombre, email: email || null, area, rol, status: 'activo', createdAt: new Date().toISOString() });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -78,33 +84,39 @@ export async function updateUser(req, res) {
     if (password && req.user.rol !== 'admin_global') {
       return res.status(403).json({ error: 'Solo el administrador global puede cambiar contraseñas' });
     }
+    if (rol === 'admin_global' && req.user.rol !== 'admin_global') {
+      return res.status(403).json({ error: 'Solo el administrador global puede asignar ese rol' });
+    }
     const pool = getPool();
 
     const existing = await pool.request().input('id', id).query('SELECT id FROM users WHERE id = @id');
     if (!existing.recordset[0]) return res.status(404).json({ error: 'Usuario no encontrado' });
 
-    const queryParts = [
-      'nombre = @nombre',
-      'email = @email',
-      'area = @area',
-      'rol = @rol',
-      'status = @status',
-      'updatedAt = GETDATE()'
-    ];
+    const request = pool.request().input('id', id);
+    const queryParts = [];
+    const addField = (field, value) => {
+      if (Object.prototype.hasOwnProperty.call(req.body, field)) {
+        request.input(field, field === 'email' && typeof value === 'string' ? value.trim() || null : value);
+        queryParts.push(`${field} = @${field}`);
+      }
+    };
 
-    const request = pool.request()
-      .input('id', id)
-      .input('nombre', nombre)
-      .input('email', typeof email === 'string' ? email.trim() || null : email)
-      .input('area', area)
-      .input('rol', rol)
-      .input('status', status);
+    addField('nombre', nombre);
+    addField('email', email);
+    addField('area', area);
+    addField('rol', rol);
+    addField('status', status);
 
     if (password) {
       const hashedPassword = await bcryptjs.hash(password, 10);
       request.input('password', hashedPassword);
       queryParts.push('password = @password');
     }
+
+    if (queryParts.length === 0) {
+      return res.status(400).json({ error: 'No hay cambios para guardar' });
+    }
+    queryParts.push('updatedAt = GETDATE()');
 
     await request.query(`
         UPDATE users 

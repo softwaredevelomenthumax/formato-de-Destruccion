@@ -9,6 +9,6 @@ router.get('/', requireRole('administrador', 'admin_global'), controller.getUser
 router.post('/:id/test-email', requireRole('administrador', 'admin_global'), controller.sendTestEmail);
 router.get('/:id', requireRole('administrador', 'admin_global'), controller.getUserById);
 router.put('/:id', requireRole('administrador', 'admin_global'), controller.updateUser);
-router.delete('/:id', requireRole('admin_global'), controller.deleteUser);
+router.delete('/:id', requireRole('administrador', 'admin_global'), controller.deleteUser);
 
 export default router;

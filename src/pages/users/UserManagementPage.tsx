@@ -29,6 +29,9 @@ export default function UserManagementPage() {
   const [editUser, setEditUser] = useState<User | null>(null);
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
+  const [passwordUser, setPasswordUser] = useState<User | null>(null);
+  const [newPassword, setNewPassword] = useState("");
+  const [saving, setSaving] = useState(false);
 
   const [form, setForm] = useState({ nombre: "", username: "", password: "Humax2024*", area: "", rol: "solicitante" as Role, email: "", status: "activo" as UserStatus });
 
@@ -42,16 +45,39 @@ export default function UserManagementPage() {
 
   const handleSaveUser = async () => {
     if (!form.nombre || !form.username || !form.area) { toast.error("Complete todos los campos obligatorios"); return; }
-    if (editUser) {
-      await updateUser(editUser.id, { nombre: form.nombre, area: form.area, rol: form.rol, email: form.email, status: form.status });
-      toast.success("Usuario actualizado");
-    } else {
-      await createUser({ username: form.username, password: form.password, nombre: form.nombre, area: form.area, rol: form.rol, email: form.email || undefined, status: form.status });
-      toast.success("Usuario creado correctamente");
+    if (!editUser && !form.password) { toast.error("Ingrese una contraseña inicial"); return; }
+    setSaving(true);
+    try {
+      if (editUser) {
+        await updateUser(editUser.id, { nombre: form.nombre, area: form.area, rol: form.rol, email: form.email, status: form.status });
+        toast.success("Usuario actualizado");
+      } else {
+        await createUser({ username: form.username, password: form.password, nombre: form.nombre, area: form.area, rol: form.rol, email: form.email || undefined, status: form.status });
+        toast.success("Usuario creado correctamente");
+      }
+      setEditUser(null);
+      setCreateModalOpen(false);
+      setForm({ nombre: "", username: "", password: "Humax2024*", area: "", rol: "solicitante", email: "", status: "activo" });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "No se pudo guardar el usuario");
+    } finally {
+      setSaving(false);
     }
-    setEditUser(null);
-    setCreateModalOpen(false);
-    setForm({ nombre: "", username: "", password: "Humax2024*", area: "", rol: "solicitante", email: "", status: "activo" });
+  };
+
+  const handleResetPassword = async () => {
+    if (!passwordUser || newPassword.length < 6) { toast.error("La contraseña debe tener al menos 6 caracteres"); return; }
+    setSaving(true);
+    try {
+      await updateUser(passwordUser.id, { password: newPassword });
+      toast.success(`Contraseña actualizada para ${passwordUser.nombre}`);
+      setPasswordUser(null);
+      setNewPassword("");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "No se pudo cambiar la contraseña");
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleDelete = async (id: string) => {
@@ -181,11 +207,11 @@ export default function UserManagementPage() {
                                 <Mail size={15} />
                               </button>
                             )}
-                            <button onClick={() => { updateUser(u.id, { status: u.status === "activo" ? "inactivo" : "activo" }); toast.success(`Usuario ${u.status === "activo" ? "desactivado" : "activado"}`); }}
+                            <button onClick={async () => { try { await updateUser(u.id, { status: u.status === "activo" ? "inactivo" : "activo" }); toast.success(`Usuario ${u.status === "activo" ? "desactivado" : "activado"}`); } catch (error) { toast.error(error instanceof Error ? error.message : "No se pudo actualizar el estado"); } }}
                               className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors" title={u.status === "activo" ? "Desactivar" : "Activar"}>
                               {u.status === "activo" ? <ToggleRight size={16} /> : <ToggleLeft size={16} />}
                             </button>
-                            {isGlobalAdmin && <button onClick={() => { updateUser(u.id, { password: "Reset2024*" }); toast.success("Contraseña restablecida"); }}
+                            {isGlobalAdmin && <button onClick={() => { setPasswordUser(u); setNewPassword(""); }}
                               className="p-1.5 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded transition-colors" title="Restablecer contraseña">
                               <Key size={15} />
                             </button>}
@@ -251,7 +277,7 @@ export default function UserManagementPage() {
         footer={
           <>
             <button onClick={() => { setCreateModalOpen(false); setEditUser(null); }} className="px-4 py-2 text-sm text-slate-600 hover:text-slate-900 font-medium rounded-lg hover:bg-slate-100">Cancelar</button>
-            <button onClick={handleSaveUser} className="px-5 py-2 text-sm font-semibold bg-blue-700 text-white rounded-lg hover:bg-blue-800">{editUser ? "Guardar cambios" : "Crear usuario"}</button>
+            <button onClick={handleSaveUser} disabled={saving} className="px-5 py-2 text-sm font-semibold bg-blue-700 text-white rounded-lg hover:bg-blue-800 disabled:opacity-60">{saving ? "Guardando…" : editUser ? "Guardar cambios" : "Crear usuario"}</button>
           </>
         }
       >
@@ -281,7 +307,7 @@ export default function UserManagementPage() {
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">Rol *</label>
               <select value={form.rol} onChange={(e) => setForm((p) => ({ ...p, rol: e.target.value as Role }))} className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-500">
-                {Object.entries(ROLE_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                {Object.entries(ROLE_LABELS).filter(([value]) => isGlobalAdmin || value !== "admin_global").map(([v, l]) => <option key={v} value={v}>{l}</option>)}
               </select>
             </div>
             <div>
@@ -302,6 +328,10 @@ export default function UserManagementPage() {
         </div>
       </Modal>
 
+      <Modal open={!!passwordUser} onClose={() => { setPasswordUser(null); setNewPassword(""); }} title="Cambiar contraseña" size="sm"
+        footer={<><button onClick={() => { setPasswordUser(null); setNewPassword(""); }} className="px-4 py-2 text-sm text-slate-600 rounded-lg hover:bg-slate-100">Cancelar</button><button onClick={handleResetPassword} disabled={saving} className="px-5 py-2 text-sm font-semibold bg-blue-700 text-white rounded-lg hover:bg-blue-800 disabled:opacity-60">{saving ? "Guardando…" : "Guardar contraseña"}</button></>}>
+        <div className="space-y-2"><p className="text-sm text-slate-600">Nueva contraseña para {passwordUser?.nombre}.</p><input type="password" autoComplete="new-password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="Mínimo 6 caracteres" className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" /></div>
+      </Modal>
       <ConfirmModal open={!!deleteConfirm} onClose={() => setDeleteConfirm(null)}
         onConfirm={() => deleteConfirm && handleDelete(deleteConfirm)}
         title="Eliminar usuario" message="¿Está seguro de que desea eliminar este usuario? Esta acción es irreversible."

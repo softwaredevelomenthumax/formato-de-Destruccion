@@ -16,7 +16,7 @@ async function createAndSendNotification(pool, recipient, { title, message, type
     .query(`INSERT INTO notifications (id, userId, titulo, mensaje, tipo, actaId)
       VALUES (@id, @userId, @titulo, @mensaje, @tipo, @actaId)`);
 
-  await sendNotificationEmail({
+  const emailResult = await sendNotificationEmail({
     to: recipient.email,
     recipientName: recipient.nombre,
     title,
@@ -24,14 +24,30 @@ async function createAndSendNotification(pool, recipient, { title, message, type
     actaId: actaReference || actaId,
     stage: emailStage,
   });
+  if (emailResult.sent) {
+    console.info(`Correo de notificaciÃ³n aceptado por SMTP para ${recipient.id}: ${emailResult.messageId || 'sin ID de mensaje'}`);
+  } else {
+    console.error(`Correo de notificaciÃ³n no enviado para ${recipient.id}: ${emailResult.reason || 'error desconocido'}`);
+  }
+  return { userId: recipient.id, sent: emailResult.sent, reason: emailResult.reason };
 }
 
 async function notifyRole(pool, role, notification) {
   const result = await pool.request()
     .input('role', role)
-    .query("SELECT id, nombre, email FROM users WHERE rol = @role AND status = 'activo'");
+    .query(`SELECT id, nombre, email FROM users
+      WHERE LOWER(LTRIM(RTRIM(rol))) IN (@role, 'hse & s', 'hse_s')
+        AND LOWER(LTRIM(RTRIM(status))) = 'activo'`);
 
-  await Promise.all(result.recordset.map((recipient) => createAndSendNotification(pool, recipient, notification)));
+  if (result.recordset.length === 0) {
+    console.error(`No se encontrÃ³ ningÃºn usuario HSE activo para notificar sobre el acta ${notification.actaReference || notification.actaId}`);
+    return [];
+  }
+
+  const deliveries = await Promise.allSettled(result.recordset.map((recipient) => createAndSendNotification(pool, recipient, notification)));
+  return deliveries.map((delivery, index) => delivery.status === 'fulfilled'
+    ? delivery.value
+    : { userId: result.recordset[index].id, sent: false, reason: delivery.reason?.message || 'notification_failed' });
 }
 
 function normalizeArea(value) {
@@ -361,7 +377,7 @@ export async function deleteActa(req, res) {
             OR EXISTS (SELECT 1 FROM acta_aprobaciones aa
               WHERE aa.actaId = @actaId AND (aa.aprobador = users.nombre OR aa.aprobador = users.username)))`);
     const globalAdminsResult = await pool.request()
-      .query("SELECT id, nombre, email FROM users WHERE rol IN ('admin_global', 'administrador_global', 'global_admin') AND status = 'activo' AND email IS NOT NULL AND email <> ''");
+      .query("SELECT id, nombre, email FROM users WHERE LOWER(LTRIM(RTRIM(rol))) IN ('admin_global', 'administrador_global', 'global_admin') AND LOWER(LTRIM(RTRIM(status))) = 'activo'");
 
     // Eliminar historial y aprobaciones primero
     await pool.request().input('actaId', id).query('DELETE FROM acta_historial WHERE actaId = @actaId');
@@ -370,14 +386,28 @@ export async function deleteActa(req, res) {
     await pool.request().input('actaId', id).query('DELETE FROM notifications WHERE actaId = @actaId');
     await pool.request().input('id', id).query('DELETE FROM actas WHERE id = @id');
 
-    const recipients = new Map([...involvedResult.recordset, ...globalAdminsResult.recordset].map((recipient) => [recipient.email, recipient]));
-    await Promise.allSettled([...recipients.values()].map((recipient) => sendNotificationEmail({
+    const globalAdminIds = new Set(globalAdminsResult.recordset.map((recipient) => recipient.id));
+    const otherEmailRecipients = new Map(involvedResult.recordset
+      .filter((recipient) => !globalAdminIds.has(recipient.id))
+      .map((recipient) => [recipient.email, recipient]));
+    const deletionMessage = `El usuario ${req.user.username} eliminÃ³ el acta ${acta.consecutivo}.`;
+    const globalAdminNotifications = globalAdminsResult.recordset.map((recipient) => createAndSendNotification(pool, recipient, {
+      title: `Acta ${acta.consecutivo} eliminada`,
+      message: deletionMessage,
+      type: 'warning',
+      actaId: null,
+    }));
+    const otherRecipientEmails = [...otherEmailRecipients.values()].map((recipient) => sendNotificationEmail({
       to: recipient.email,
       recipientName: recipient.nombre,
       title: `Acta ${acta.consecutivo} eliminada`,
-      message: `El acta ${acta.consecutivo} fue eliminada por el administrador global.`,
+      message: deletionMessage,
       actaId: acta.consecutivo,
-    })));
+    }));
+    const notificationResults = await Promise.allSettled([...globalAdminNotifications, ...otherRecipientEmails]);
+    notificationResults.forEach((result) => {
+      if (result.status === 'rejected') console.error('No se pudo notificar la eliminaciÃ³n de un acta:', result.reason?.message || result.reason);
+    });
 
     res.json({ message: 'Acta eliminada' });
   } catch (error) {
@@ -488,8 +518,9 @@ export async function approveActa(req, res) {
     const nextRoleLabel = 'HSE & S';
 
     // El correo al siguiente aprobador sale después de persistir el cambio de estado.
+    let emailNotifications = [];
     if (nextRole) {
-      await notifyRole(pool, nextRole, {
+      emailNotifications = await notifyRole(pool, nextRole, {
         title: 'Acta aprobada por el área: revisión HSE pendiente',
         message: `El aprobador del área ${acta.area} aprobó el acta ${acta.consecutivo}. Ahora está pendiente de tu revisión por el equipo ${nextRoleLabel}. Ingresa al sistema para continuar el flujo de aprobación.`,
         emailStage: 'Revisión de HSE & S',
@@ -513,7 +544,47 @@ export async function approveActa(req, res) {
       });
     }
 
-    res.json({ message: 'Acta aprobada' });
+    res.json({ message: 'Acta aprobada', emailNotifications });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+}
+
+// ReenvÃ­a el aviso de aprobaciÃ³n HSE para un acta que ya estÃ¡ esperando ese paso.
+export async function resendHseEmail(req, res) {
+  try {
+    const { id } = req.params;
+    const pool = getPool();
+    const actaResult = await pool.request()
+      .input('id', id)
+      .query('SELECT id, consecutivo, area, status FROM actas WHERE id = @id');
+    const acta = actaResult.recordset[0];
+    if (!acta) return res.status(404).json({ error: 'Acta no encontrada' });
+    if (acta.status !== 'pendiente_hse') {
+      return res.status(409).json({ error: 'Solo se puede reenviar el correo cuando el acta estÃ¡ pendiente de HSE' });
+    }
+
+    const recipientResult = await pool.request().query(`SELECT id, nombre, email FROM users
+      WHERE LOWER(LTRIM(RTRIM(rol))) IN ('hse', 'hse & s', 'hse_s')
+        AND LOWER(LTRIM(RTRIM(status))) = 'activo'`);
+    const recipients = recipientResult.recordset.filter((recipient) => recipient.email?.trim());
+    if (!recipients.length) {
+      return res.status(404).json({ error: 'No hay usuarios HSE activos con correo registrado' });
+    }
+
+    const deliveries = await Promise.all(recipients.map(async (recipient) => {
+      const email = await sendNotificationEmail({
+        to: recipient.email,
+        recipientName: recipient.nombre,
+        title: 'Acta pendiente de revisiÃ³n HSE',
+        message: `El acta ${acta.consecutivo} del Ã¡rea ${acta.area} estÃ¡ pendiente de aprobaciÃ³n por HSE. Ingresa al sistema para revisarla.`,
+        actaId: acta.consecutivo,
+        stage: 'RevisiÃ³n de HSE & S',
+      });
+      return { userId: recipient.id, sent: email.sent, reason: email.reason };
+    }));
+
+    res.json({ emailNotifications: deliveries });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
