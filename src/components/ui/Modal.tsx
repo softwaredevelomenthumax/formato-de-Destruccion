@@ -1,5 +1,5 @@
 import { useEffect, type ReactNode } from "react";
-import { X } from "lucide-react";
+import { LoaderCircle, X } from "lucide-react";
 
 interface ModalProps {
   open: boolean;
@@ -54,24 +54,28 @@ interface ConfirmModalProps {
   confirmLabel?: string;
   cancelLabel?: string;
   danger?: boolean;
+  loading?: boolean;
+  closeOnConfirm?: boolean;
 }
 
 export function ConfirmModal({
   open, onClose, onConfirm, title, message,
   confirmLabel = "Confirmar", cancelLabel = "Cancelar", danger = false,
+  loading = false, closeOnConfirm = true,
 }: ConfirmModalProps) {
   return (
     <Modal open={open} onClose={onClose} title={title} size="sm"
       footer={
         <>
-          <button onClick={onClose} className="px-4 py-2 text-sm text-slate-600 hover:text-slate-900 font-medium rounded-lg hover:bg-slate-100 transition-colors">
+          <button onClick={onClose} disabled={loading} className="px-4 py-2 text-sm text-slate-600 hover:text-slate-900 font-medium rounded-lg hover:bg-slate-100 transition-colors disabled:cursor-not-allowed disabled:opacity-50">
             {cancelLabel}
           </button>
           <button
-            onClick={() => { onConfirm(); onClose(); }}
+            onClick={() => { onConfirm(); if (closeOnConfirm) onClose(); }}
+            disabled={loading}
             className={`px-4 py-2 text-sm font-medium rounded-lg text-white transition-colors ${danger ? "bg-red-600 hover:bg-red-700" : "bg-blue-700 hover:bg-blue-800"}`}
           >
-            {confirmLabel}
+            {loading ? <><LoaderCircle size={15} className="mr-2 inline animate-spin" />{confirmLabel}</> : confirmLabel}
           </button>
         </>
       }

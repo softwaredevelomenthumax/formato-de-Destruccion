@@ -15,6 +15,11 @@ function numericValue(value: unknown): number {
   return Number.isFinite(number) ? number : 0;
 }
 
+const reportNumberFormatter = new Intl.NumberFormat("es-CO", { maximumFractionDigits: 2 });
+const reportDecimalFormatter = new Intl.NumberFormat("es-CO", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const formatReportNumber = (value: unknown) => reportNumberFormatter.format(numericValue(value));
+const formatReportDecimal = (value: unknown) => reportDecimalFormatter.format(numericValue(value));
+
 export default function ReportsPage() {
   const { actas } = useApp();
   const [fechaDesde, setFechaDesde] = useState("");
@@ -59,9 +64,10 @@ export default function ReportsPage() {
     const headers = ["Consecutivo", "Empresa", "Área", "Producto", "Causal", "Clasificación", "Peso (kg)", "Unidades", "Costo", "Estado", "Fecha", "Solicitante"];
     const rows = filtered.map((a) => [
       a.consecutivo, a.empresa, a.area, a.descripcion, CAUSAL_LABELS[a.causal], CLASIFICACION_LABELS[a.clasificacion],
-      a.pesoKg, a.cantidadUnidades, a.costoDestruccion, a.status, a.fecha, a.solicitanteNombre
+      formatReportDecimal(a.pesoKg), formatReportNumber(a.cantidadUnidades), formatReportNumber(a.costoDestruccion), a.status, a.fecha, a.solicitanteNombre
     ]);
-    const csv = [headers, ...rows].map((r) => r.join(",")).join("\n");
+    const csvCell = (value: unknown) => `"${String(value ?? "").replace(/"/g, '""')}"`;
+    const csv = [headers, ...rows].map((row) => row.map(csvCell).join(";")).join("\r\n");
     const blob = new Blob([csv], { type: "text/csv" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -124,9 +130,9 @@ export default function ReportsPage() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {[
           { label: "Total actas", value: filtered.length.toString() },
-          { label: "Costo total", value: `COP ${totalCosto.toLocaleString("es-CO")}` },
-          { label: "Peso total (kg)", value: totalPeso.toFixed(2) },
-          { label: "Total unidades", value: totalUnidades.toLocaleString("es-CO") },
+          { label: "Costo total", value: `COP ${formatReportNumber(totalCosto)}` },
+          { label: "Peso total (kg)", value: formatReportDecimal(totalPeso) },
+          { label: "Total unidades", value: formatReportNumber(totalUnidades) },
         ].map((s) => (
           <div key={s.label} className="stat-card bg-white rounded-2xl border border-slate-200 p-4">
             <p className="text-xs text-slate-500 font-medium uppercase tracking-wide">{s.label}</p>
@@ -186,7 +192,7 @@ export default function ReportsPage() {
         {byArea.length === 0 ? <p className="p-6 text-center text-sm text-slate-500">No hay costos registrados para mostrar.</p> : <div className="divide-y divide-slate-100">{byArea.map((item) => (
           <div key={item.area} className="flex items-center justify-between gap-4 px-5 py-3">
             <div><p className="text-sm font-semibold text-slate-800">{item.area}</p><p className="text-xs text-slate-500">{item.total} {item.total === 1 ? "acta" : "actas"}</p></div>
-            <p className="text-base font-bold text-teal-700">COP {item.costo.toLocaleString("es-CO")}</p>
+            <p className="text-base font-bold text-teal-700">COP {formatReportNumber(item.costo)}</p>
           </div>
         ))}</div>}
       </div>
@@ -216,8 +222,8 @@ export default function ReportsPage() {
                   <td className="px-4 py-2.5 text-slate-600 text-xs">{a.empresa}</td>
                   <td className="px-4 py-2.5 text-slate-800 max-w-xs truncate">{a.descripcion}</td>
                   <td className="px-4 py-2.5 text-slate-500 text-xs">{CAUSAL_LABELS[a.causal]}</td>
-                  <td className="px-4 py-2.5 text-right text-slate-700">{numericValue(a.pesoKg)}</td>
-                  <td className="px-4 py-2.5 text-right text-slate-700">COP {numericValue(a.costoDestruccion).toLocaleString("es-CO")}</td>
+                  <td className="px-4 py-2.5 text-right text-slate-700">{formatReportDecimal(a.pesoKg)}</td>
+                  <td className="px-4 py-2.5 text-right text-slate-700">COP {formatReportNumber(a.costoDestruccion)}</td>
                   <td className="px-4 py-2.5"><ActaStatusBadge status={a.status} /></td>
                 </tr>
               ))}

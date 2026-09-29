@@ -66,7 +66,7 @@ async function userBelongsToArea(pool, userId, area) {
   return normalizeArea(result.recordset[0]?.area) === normalizeArea(area);
 }
 
-async function notifyAreaApprovers(pool, area, notification) {
+async function notifyAreaApprovers(pool, area, notification, approverIdentifier) {
   const areaKey = normalizeArea(area);
   if (!areaKey) {
     console.warn("Acta sin área: no se envió notificación a aprobadores de área.");
@@ -75,12 +75,19 @@ async function notifyAreaApprovers(pool, area, notification) {
 
   const result = await pool.request()
     .query("SELECT id, nombre, email, area FROM users WHERE rol = 'aprobador_area' AND status = 'activo'");
-  const recipients = result.recordset.filter((user) => normalizeArea(user.area) === areaKey);
+  const approverKey = normalizeArea(approverIdentifier);
+  const recipients = result.recordset.filter((user) =>
+    normalizeArea(user.area) === areaKey
+      && (!approverKey || normalizeArea(user.username) === approverKey || normalizeArea(user.nombre) === approverKey)
+  );
   if (!recipients.length) {
     console.warn(`No hay aprobador activo para el área: ${area}`);
     return;
   }
-  await Promise.all(recipients.map((recipient) => createAndSendNotification(pool, recipient, notification)));
+  const deliveries = await Promise.allSettled(recipients.map((recipient) => createAndSendNotification(pool, recipient, notification)));
+  return deliveries.map((delivery, index) => delivery.status === 'fulfilled'
+    ? delivery.value
+    : { userId: recipients[index].id, sent: false, reason: delivery.reason?.message || 'notification_failed' });
 }
 
 async function getActiveUser(pool, userId) {
@@ -530,6 +537,22 @@ export async function approveActa(req, res) {
       });
     }
 
+    let areaApproverNotifications = [];
+    if (paso === 'hse') {
+      const areaApprovalResult = await pool.request()
+        .input('actaId', id)
+        .query("SELECT aprobador FROM acta_aprobaciones WHERE actaId = @actaId AND paso = 'area'");
+      const areaApprover = areaApprovalResult.recordset[0]?.aprobador;
+      areaApproverNotifications = await notifyAreaApprovers(pool, acta.area, {
+        title: 'Acta aprobada por HSE',
+        message: `HSE aprobÃ³ el acta ${acta.consecutivo}. El proceso de aprobaciÃ³n ha finalizado.`,
+        emailStage: 'Acta aprobada por HSE',
+        type: 'success',
+        actaId: id,
+        actaReference: acta.consecutivo,
+      }, areaApprover);
+    }
+
     const requester = await getActiveUser(pool, acta.solicitanteId);
     if (requester) {
       const statusMessage = nextRole
@@ -544,7 +567,7 @@ export async function approveActa(req, res) {
       });
     }
 
-    res.json({ message: 'Acta aprobada', emailNotifications });
+    res.json({ message: 'Acta aprobada', emailNotifications, areaApproverNotifications });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }

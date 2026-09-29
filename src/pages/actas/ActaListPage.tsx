@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef } from "react";
 import { useNavigate } from "react-router";
 import { FileText, Search, Filter, Download, Trash2, Eye } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
@@ -31,6 +31,8 @@ export default function ActaListPage() {
   const [empresaFilter, setEmpresaFilter] = useState<Empresa | "">("");
   const [page, setPage] = useState(1);
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const deletionInProgress = useRef(false);
   const PAGE_SIZE = 12;
 
   const visibleActas = useMemo(() => {
@@ -56,12 +58,18 @@ export default function ActaListPage() {
   const pageActas = visibleActas.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
   const handleDelete = async (id: string) => {
+    if (deletionInProgress.current) return;
+    deletionInProgress.current = true;
+    setDeletingId(id);
     try {
       await deleteActa(id);
       toast.success("Acta eliminada correctamente");
       setDeleteId(null);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "No se puede eliminar esta acta");
+    } finally {
+      deletionInProgress.current = false;
+      setDeletingId(null);
     }
   };
 
@@ -189,13 +197,15 @@ export default function ActaListPage() {
 
       <ConfirmModal
         open={!!deleteId}
-        onClose={() => setDeleteId(null)}
+        onClose={() => { if (!deletingId) setDeleteId(null); }}
         onConfirm={() => deleteId && handleDelete(deleteId)}
         title="Eliminar acta"
         message="¿Está seguro de que desea eliminar esta acta? Esta acción no se puede deshacer."
-        confirmLabel="Eliminar"
+        confirmLabel={deletingId ? "Eliminando…" : "Eliminar"}
         cancelLabel="Cancelar"
         danger
+        loading={!!deletingId}
+        closeOnConfirm={false}
       />
     </div>
   );

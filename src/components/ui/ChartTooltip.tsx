@@ -16,9 +16,10 @@ export default function ChartTooltip({ active, label, payload, currency = false 
 
   const item = payload[0];
   const value = Number(item.value || 0);
+  const formattedNumber = Number.isFinite(value) ? value.toLocaleString("es-CO", { maximumFractionDigits: 2 }) : "0";
   const formattedValue = currency
-    ? `COP ${value.toLocaleString("es-CO")}`
-    : value.toLocaleString("es-CO");
+    ? `COP ${formattedNumber}`
+    : formattedNumber;
 
   return (
     <div className="chart-tooltip">
