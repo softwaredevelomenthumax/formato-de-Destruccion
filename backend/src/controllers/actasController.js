@@ -66,6 +66,13 @@ async function userBelongsToArea(pool, userId, area) {
   return normalizeArea(result.recordset[0]?.area) === normalizeArea(area);
 }
 
+async function getAreaApproverIdentifier(pool, actaId) {
+  const result = await pool.request()
+    .input('actaId', actaId)
+    .query("SELECT aprobador FROM acta_aprobaciones WHERE actaId = @actaId AND paso = 'area'");
+  return result.recordset[0]?.aprobador;
+}
+
 async function notifyAreaApprovers(pool, area, notification, approverIdentifier) {
   const areaKey = normalizeArea(area);
   if (!areaKey) {
@@ -74,7 +81,7 @@ async function notifyAreaApprovers(pool, area, notification, approverIdentifier)
   }
 
   const result = await pool.request()
-    .query("SELECT id, nombre, email, area FROM users WHERE rol = 'aprobador_area' AND status = 'activo'");
+    .query("SELECT id, username, nombre, email, area FROM users WHERE rol = 'aprobador_area' AND status = 'activo'");
   const approverKey = normalizeArea(approverIdentifier);
   const recipients = result.recordset.filter((user) =>
     normalizeArea(user.area) === areaKey
@@ -539,10 +546,7 @@ export async function approveActa(req, res) {
 
     let areaApproverNotifications = [];
     if (paso === 'hse') {
-      const areaApprovalResult = await pool.request()
-        .input('actaId', id)
-        .query("SELECT aprobador FROM acta_aprobaciones WHERE actaId = @actaId AND paso = 'area'");
-      const areaApprover = areaApprovalResult.recordset[0]?.aprobador;
+      const areaApprover = await getAreaApproverIdentifier(pool, id);
       areaApproverNotifications = await notifyAreaApprovers(pool, acta.area, {
         title: 'Acta aprobada por HSE',
         message: `HSE aprobÃ³ el acta ${acta.consecutivo}. El proceso de aprobaciÃ³n ha finalizado.`,
@@ -651,6 +655,19 @@ export async function rejectActa(req, res) {
       .input('id', id)
       .query("UPDATE actas SET status = 'rechazada', updatedAt = GETDATE() WHERE id = @id");
 
+    let areaApproverNotifications = [];
+    if (paso === 'hse') {
+      const areaApprover = await getAreaApproverIdentifier(pool, id);
+      areaApproverNotifications = await notifyAreaApprovers(pool, acta.area, {
+        title: 'Acta rechazada por HSE',
+        message: `HSE rechazó el acta ${acta.consecutivo}. Motivo: ${motivo}`,
+        emailStage: 'Acta rechazada por HSE',
+        type: 'error',
+        actaId: id,
+        actaReference: acta.consecutivo,
+      }, areaApprover);
+    }
+
     const requester = await getActiveUser(pool, acta.solicitanteId);
     if (requester) {
       await createAndSendNotification(pool, requester, {
@@ -660,7 +677,7 @@ export async function rejectActa(req, res) {
       });
     }
 
-    res.json({ message: 'Acta rechazada' });
+    res.json({ message: 'Acta rechazada', areaApproverNotifications });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -694,6 +711,19 @@ export async function returnActa(req, res) {
       .query("UPDATE actas SET status = 'devuelta_ajustes', updatedAt = GETDATE() WHERE id = @id");
 
     const details = (ajustes || []).map((item) => `${item.campo}: ${item.comentario || item.correccion || ''}`).join('; ');
+    let areaApproverNotifications = [];
+    if (paso === 'hse') {
+      const areaApprover = await getAreaApproverIdentifier(pool, id);
+      areaApproverNotifications = await notifyAreaApprovers(pool, acta.area, {
+        title: 'Acta devuelta por HSE',
+        message: `HSE devolvió el acta ${acta.consecutivo} para ajustes.${details ? ` Detalle: ${details}` : ''}`,
+        emailStage: 'Acta devuelta por HSE',
+        type: 'warning',
+        actaId: id,
+        actaReference: acta.consecutivo,
+      }, areaApprover);
+    }
+
     const requester = await getActiveUser(pool, acta.solicitanteId);
     if (requester) {
       await createAndSendNotification(pool, requester, {
@@ -702,7 +732,7 @@ export async function returnActa(req, res) {
         type: 'warning', actaId: id, actaReference: acta.consecutivo,
       });
     }
-    res.json({ message: 'Acta devuelta para ajustes' });
+    res.json({ message: 'Acta devuelta para ajustes', areaApproverNotifications });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
