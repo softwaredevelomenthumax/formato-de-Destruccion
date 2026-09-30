@@ -69,6 +69,10 @@ router.post('/login', async (req, res) => {
       return res.status(401).json({ error: 'Usuario o contraseña inválidos' });
     }
 
+    if (String(user.status).trim().toLowerCase() !== 'activo') {
+      return res.status(403).json({ error: 'La cuenta está inactiva. Contacte al administrador' });
+    }
+
     const role = ['administrador_global', 'global_admin'].includes(String(user.rol).trim().toLowerCase())
       ? 'admin_global'
       : user.rol;
