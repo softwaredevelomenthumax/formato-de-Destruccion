@@ -14,6 +14,7 @@ import { ConfirmModal, Modal } from "../../components/ui/Modal";
 import {
   CLASIFICACION_LABELS, CAUSAL_LABELS, CAUSAL_DESCRIPTIONS, EMPRESAS, AREAS
 } from "../../constants";
+import { MATERIAL_TYPE_OPTIONS, normalizeMaterialType } from "../../constants/materialTypes";
 import type { ActaMaterial, CausalDestruccion, Ceco, Empresa, InvimaProduct } from "../../types";
 import { api } from "../../services/api.ts";
 import { toast } from "sonner";
@@ -41,48 +42,9 @@ const MATERIAL_CLASSIFICATIONS = [
   { value: "residuo_aprovechable", label: "Residuo aprovechable", detail: "Información manual" },
 ] as const;
 
-const MATERIAL_TYPE_OPTIONS = [
-  { value: "ROH", classification: "MP", label: "ROH = Materia prima", meaning: "Materia prima: insumos y sustancias que se utilizan para fabricar el producto." },
-  { value: "FERT", classification: "PT", label: "FERT = Producto terminado", meaning: "Producto terminado: producto listo para comercialización o entrega." },
-  { value: "HALB", classification: "ST", label: "HALB = Semiterminado", meaning: "Semiterminado: material que requiere una etapa adicional antes de convertirse en producto terminado." },
-  { value: "VERP", classification: "ME", label: "VERP = Material de empaque", meaning: "Material de empaque: envases, etiquetas, blísteres y otros materiales de acondicionamiento." },
-  { value: "UNBW", classification: "reactivos", label: "UNBW = Reactivo o material de laboratorio", meaning: "Reactivo o material de laboratorio: sustancias y materiales usados para análisis, control o referencia." },
-  { value: "ZNBW", classification: "residuo_comun", label: "ZNBW = Residuos peligrosos comunes", meaning: "Residuos peligrosos comunes generados durante actividades operativas." },
-  { value: "OTRO", classification: "otro", label: "Otro", meaning: "Tipo de material no incluido en las opciones anteriores." },
-] as const;
-
 const MATERIAL_TYPES_WITH_EXPIRY = new Set(["UNBW", "ROH", "FERT", "VERP"]);
 const MATERIAL_TYPES_WITH_PRICE = new Set(["UNBW", "ROH", "FERT", "VERP"]);
 const INVIMA_CLASSIFICATIONS = new Set(["MP", "ME", "PT"]);
-
-const normalizeMaterialType = (value: unknown) => {
-  const normalized = String(value || "")
-    .trim()
-    .toUpperCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[\s_-]+/g, "");
-  const aliases: Record<string, string> = {
-    ROH: "ROH",
-    MATERIAPRIMA: "ROH",
-    FERT: "FERT",
-    PRODUCTOTERMINADO: "FERT",
-    HALB: "HALB",
-    SEMITERMINADO: "HALB",
-    PRODUCTOSEMITERMINADO: "HALB",
-    ME: "VERP",
-    VERP: "VERP",
-    ZEMB: "VERP",
-    MATERIALEMPAQUE: "VERP",
-    UNBW: "UNBW",
-    REACTIVO: "UNBW",
-    REACTIVOS: "UNBW",
-    MATERIALDELABORATORIO: "UNBW",
-    ZNBW: "ZNBW",
-    OTRO: "OTRO",
-  };
-  return aliases[normalized] || String(value || "").trim().toUpperCase();
-};
 
 const requiresExpiryDate = (value: unknown) => MATERIAL_TYPES_WITH_EXPIRY.has(normalizeMaterialType(value));
 
@@ -1125,6 +1087,7 @@ export default function ActaCreatePage() {
   ];
   const progress = filled.filter(Boolean).length;
   const summaryMaterial = materialSummary[summaryMaterialPage] ?? materialSummary[0];
+  const summaryMaterialType = MATERIAL_TYPE_OPTIONS.find((option) => option.value === normalizeMaterialType(summaryMaterial?.tipoMaterial));
   const economicSummary = materialSummary.reduce((totals, material) => ({
     pesoKg: totals.pesoKg + Number(material.pesoKg || 0),
     cantidadUnidades: totals.cantidadUnidades + Number(material.cantidadUnidades || 0),
@@ -1928,7 +1891,10 @@ export default function ActaCreatePage() {
                     <p className="mb-2 text-sm font-semibold text-slate-800">{summaryMaterial.descripcion}</p>
                     <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                       <Row label="Código SAP" value={summaryMaterial.codigoSAP} />
-                      <Row label="Tipo de material" value={summaryMaterial.tipoMaterial || "No especificado"} />
+                      <Row label="Tipo de material" value={summaryMaterial.tipoMaterial
+                        ? `${summaryMaterial.tipoMaterial}${summaryMaterialType ? ` · ${summaryMaterialType.label.split(" = ")[1]}` : ""}`
+                        : "No especificado"} />
+                      {summaryMaterialType && <p className="text-xs leading-relaxed text-slate-500 sm:col-span-2">{summaryMaterialType.meaning}</p>}
                       <Row label="Clasificación" value={CLASIFICACION_LABELS[summaryMaterial.clasificacion]} />
                       <Row label="Registro INVIMA" value={summaryMaterial.registroINVIMA} />
                       <Row label="Número de Lote" value={summaryMaterial.numeroLote} />

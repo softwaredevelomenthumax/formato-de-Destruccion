@@ -10,6 +10,7 @@ import { ActaStatusBadge } from "../../components/ui/Badge";
 import { ApprovalTimeline } from "../../components/ui/Timeline";
 import { Modal, ConfirmModal } from "../../components/ui/Modal";
 import { CAUSAL_LABELS, CLASIFICACION_LABELS, CAUSAL_DEVOLUCION_OPTIONS } from "../../constants";
+import { MATERIAL_TYPE_OPTIONS, normalizeMaterialType } from "../../constants/materialTypes";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
 import { toast } from "sonner";
@@ -25,6 +26,7 @@ export default function ActaDetailPage() {
   const [showApprove, setShowApprove] = useState(false);
   const [isApproving, setIsApproving] = useState(false);
   const [isResendingHse, setIsResendingHse] = useState(false);
+  const [isResendingAreaApprover, setIsResendingAreaApprover] = useState(false);
   const [showReject, setShowReject] = useState(false);
   const [showReturn, setShowReturn] = useState(false);
   const [approveComment, setApproveComment] = useState("");
@@ -79,6 +81,19 @@ export default function ActaDetailPage() {
     return format(fecha, "dd/MM/yyyy HH:mm", { locale: es });
   };
 
+  const formatFechaVencimiento = (value?: string | null) => {
+    if (!value) return "—";
+    const dateParts = String(value).match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (dateParts) {
+      const [, year, month, day] = dateParts;
+      const parsed = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day)));
+      if (parsed.getUTCFullYear() !== Number(year) || parsed.getUTCMonth() !== Number(month) - 1 || parsed.getUTCDate() !== Number(day)) return "—";
+      return `${day}/${month}/${year}`;
+    }
+    const fecha = new Date(value);
+    return Number.isNaN(fecha.getTime()) ? "—" : format(fecha, "dd/MM/yyyy", { locale: es });
+  };
+
   const getPasoForRole = () => {
     if (user.rol === "aprobador_area") return "area" as const;
     if (user.rol === "hse") return "hse" as const;
@@ -90,6 +105,10 @@ export default function ActaDetailPage() {
   const canEdit = user.rol === "solicitante" && acta.solicitanteId === user.id && (acta.status === "borrador" || acta.status === "devuelta_ajustes");
   const canSend = user.rol === "solicitante" && acta.solicitanteId === user.id && acta.status === "borrador";
   const canResendHse = acta.status === "pendiente_hse" && ["administrador", "admin_global", "aprobador_area"].includes(user.rol);
+  const isFinalActa = ["aprobada", "rechazada", "devuelta_ajustes"].includes(acta.status);
+  const canResendAreaApprover = isFinalActa
+    && ["administrador", "admin_global", "aprobador_area"].includes(user.rol)
+    && (user.rol !== "aprobador_area" || normalizeArea(user.area) === normalizeArea(acta.area));
 
   const handleResendHse = async () => {
     setIsResendingHse(true);
@@ -107,7 +126,29 @@ export default function ActaDetailPage() {
       setIsResendingHse(false);
     }
   };
+
+  const handleResendAreaApprover = async () => {
+    setIsResendingAreaApprover(true);
+    try {
+      const result = await api.notifyAreaApprover(acta.id);
+      const failed = result.emailNotifications?.filter((delivery: { sent: boolean }) => !delivery.sent) ?? [];
+      if (failed.length) {
+        toast.warning("Se creó el aviso, pero no se pudo enviar el correo. Revisa la configuración y el registro del backend.");
+      } else {
+        toast.success("Se reenvió el aviso al aprobador de área.");
+      }
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "No se pudo reenviar el aviso al aprobador de área");
+    } finally {
+      setIsResendingAreaApprover(false);
+    }
+  };
+
   const currentMaterial = materialList[materialPage] ?? materialList[0];
+  const currentMaterialType = MATERIAL_TYPE_OPTIONS.find((option) => option.value === normalizeMaterialType(currentMaterial?.tipoMaterial));
+  const currentMaterialTypeValue = currentMaterial?.tipoMaterial
+    ? [currentMaterial.tipoMaterial, currentMaterialType?.label.split(" = ")[1]].filter(Boolean).join(" · ")
+    : "No especificado";
 
   const handleApprove = async () => {
     if (!paso || isApproving) return;
@@ -192,6 +233,11 @@ export default function ActaDetailPage() {
               <Mail size={14} /> {isResendingHse ? "Enviando…" : "Reenviar aviso a HSE"}
             </button>
           )}
+          {canResendAreaApprover && (
+            <button onClick={handleResendAreaApprover} disabled={isResendingAreaApprover} className="flex items-center gap-2 px-3 py-2 text-sm font-medium border border-blue-300 text-blue-700 rounded-lg hover:bg-blue-50 disabled:opacity-60">
+              <Mail size={14} /> {isResendingAreaApprover ? "Enviando…" : "Reenviar aviso al área"}
+            </button>
+          )}
           {canEdit && (
             <button onClick={() => navigate(`/actas/${acta.id}/editar`)} className="flex items-center gap-2 px-4 py-2 text-sm font-medium border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50">
               <Edit2 size={14} /> Corregir
@@ -260,12 +306,13 @@ export default function ActaDetailPage() {
                 <p className="mb-2 text-sm font-semibold text-slate-800">{currentMaterial.descripcion}</p>
                 <Grid2>
                   <Row label="Código SAP" value={currentMaterial.codigoSAP} />
-                  <Row label="Tipo de material" value={currentMaterial.tipoMaterial || "No especificado"} />
+                  <Row label="Tipo de material" value={currentMaterialTypeValue} />
+                  {currentMaterialType && <p className="col-span-2 text-xs leading-relaxed text-slate-500">{currentMaterialType.meaning}</p>}
                   <Row label="Registro INVIMA" value={currentMaterial.registroINVIMA} />
                   <Row label="Número de Lote" value={currentMaterial.numeroLote} />
                   <Row label="Orden de Producción" value={currentMaterial.ordenProduccion} />
                   <Row label="Clasificación" value={CLASIFICACION_LABELS[currentMaterial.clasificacion]} />
-                  {currentMaterial.fechaVencimiento && <Row label="Fecha de vencimiento" value={currentMaterial.fechaVencimiento} />}
+                  {currentMaterial.fechaVencimiento && <Row label="Fecha de vencimiento" value={formatFechaVencimiento(currentMaterial.fechaVencimiento)} />}
                   <Row label="Sustancia Controlada" value={currentMaterial.sustanciaControlada ? "Sí" : "No"} />
                   <Row label="Peso (kg)" value={currentMaterial.pesoKg == null ? "No especificado" : `${currentMaterial.pesoKg} kg`} />
                   <Row label="Unidades" value={currentMaterial.cantidadUnidades == null ? "No especificado" : String(currentMaterial.cantidadUnidades)} />
@@ -337,7 +384,7 @@ export default function ActaDetailPage() {
             <ApprovalTimeline aprobaciones={safeAprobaciones} />
           </InfoCard>
           <div className="bg-slate-50 rounded-xl border border-slate-200 p-4 space-y-2">
-            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Metadatos</p>
+            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Actualizaciones</p>
             <div className="space-y-1">
               <Row label="Creado" value={formatFecha(acta.createdAt)} />
               <Row label="Actualizado" value={formatFecha(acta.updatedAt)} />

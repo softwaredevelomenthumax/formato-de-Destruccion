@@ -59,6 +59,26 @@ function normalizeArea(value) {
     .replace(/\s+/g, " ");
 }
 
+function serializeApproval(approval) {
+  let ajustes = approval.ajustes;
+  if (typeof ajustes === 'string') {
+    try {
+      ajustes = JSON.parse(ajustes);
+    } catch {
+      ajustes = [];
+    }
+  }
+
+  return {
+    paso: approval.paso,
+    status: approval.status,
+    aprobador: approval.aprobador,
+    comentario: approval.comentario,
+    motivoRechazo: approval.motivo,
+    ajustes: Array.isArray(ajustes) ? ajustes : [],
+  };
+}
+
 async function userBelongsToArea(pool, userId, area) {
   const result = await pool.request()
     .input('userId', userId)
@@ -277,12 +297,22 @@ export async function getActas(req, res) {
     const pool = getPool();
     const result = await pool.request().query('SELECT * FROM actas ORDER BY createdAt DESC');
     const materialsResult = await pool.request().query('SELECT * FROM acta_materiales ORDER BY createdAt, id');
+    const approvalsResult = await pool.request().query('SELECT actaId, paso, status, aprobador, comentario, motivo, ajustes FROM acta_aprobaciones');
     const materialsByActa = materialsResult.recordset.reduce((groups, material) => {
       if (!groups[material.actaId]) groups[material.actaId] = [];
       groups[material.actaId].push(material);
       return groups;
     }, {});
-    res.json(result.recordset.map((acta) => ({ ...acta, materiales: materialsByActa[acta.id] || [] })));
+    const approvalsByActa = approvalsResult.recordset.reduce((groups, approval) => {
+      if (!groups[approval.actaId]) groups[approval.actaId] = [];
+      groups[approval.actaId].push(serializeApproval(approval));
+      return groups;
+    }, {});
+    res.json(result.recordset.map((acta) => ({
+      ...acta,
+      materiales: materialsByActa[acta.id] || [],
+      aprobaciones: approvalsByActa[acta.id] || [],
+    })));
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -312,7 +342,7 @@ export async function getActaById(req, res) {
     // Obtener aprobaciones
     const aprobacionesResult = await pool.request()
       .input('actaId', id)
-      .query('SELECT paso, status, aprobador, comentario FROM acta_aprobaciones WHERE actaId = @actaId');
+      .query('SELECT paso, status, aprobador, comentario, motivo, ajustes FROM acta_aprobaciones WHERE actaId = @actaId');
 
     const materialesResult = await pool.request()
       .input('actaId', id)
@@ -321,7 +351,7 @@ export async function getActaById(req, res) {
     res.json({
       ...acta,
       historial: historialResult.recordset,
-      aprobaciones: aprobacionesResult.recordset,
+      aprobaciones: aprobacionesResult.recordset.map(serializeApproval),
       materiales: materialesResult.recordset,
     });
   } catch (error) {
@@ -611,6 +641,62 @@ export async function resendHseEmail(req, res) {
       return { userId: recipient.id, sent: email.sent, reason: email.reason };
     }));
 
+    res.json({ emailNotifications: deliveries });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+}
+
+export async function resendAreaApproverEmail(req, res) {
+  try {
+    const { id } = req.params;
+    const pool = getPool();
+    const actaResult = await pool.request()
+      .input('id', id)
+      .query('SELECT id, consecutivo, area, status FROM actas WHERE id = @id');
+    const acta = actaResult.recordset[0];
+    if (!acta) return res.status(404).json({ error: 'Acta no encontrada' });
+
+    const outcomeStatus = {
+      aprobada: 'aprobado',
+      rechazada: 'rechazado',
+      devuelta_ajustes: 'devuelto',
+    }[acta.status];
+    if (!outcomeStatus) {
+      return res.status(409).json({ error: 'Solo se puede reenviar el aviso de un acta aprobada, rechazada o devuelta' });
+    }
+
+    if (req.user.rol === 'aprobador_area' && !(await userBelongsToArea(pool, req.user.id, acta.area))) {
+      return res.status(403).json({ error: 'Este usuario no está asignado al área del acta' });
+    }
+
+    const approvalsResult = await pool.request()
+      .input('actaId', id)
+      .query('SELECT paso, status, aprobador FROM acta_aprobaciones WHERE actaId = @actaId');
+    const approvals = approvalsResult.recordset;
+    const areaApproval = approvals.find((approval) => approval.paso === 'area');
+    const finalApproval = acta.status === 'aprobada'
+      ? approvals.find((approval) => approval.paso === 'hse' && approval.status === outcomeStatus)
+      : approvals.find((approval) => approval.paso === 'hse' && approval.status === outcomeStatus)
+        || approvals.find((approval) => approval.paso === 'area' && approval.status === outcomeStatus);
+    if (!finalApproval) {
+      return res.status(409).json({ error: 'No se encontró la aprobación que corresponde al estado actual del acta' });
+    }
+
+    const outcomeLabel = acta.status === 'aprobada' ? 'aprobada' : acta.status === 'rechazada' ? 'rechazada' : 'devuelta para ajustes';
+    const decisionBy = finalApproval.paso === 'hse' ? 'HSE' : 'el aprobador del área';
+    const deliveries = await notifyAreaApprovers(pool, acta.area, {
+      title: `Acta ${outcomeLabel} por ${decisionBy}`,
+      message: `El acta ${acta.consecutivo} fue ${outcomeLabel} por ${decisionBy}. Ingresa al sistema para consultar el resultado.`,
+      emailStage: `Reenvío de aviso al aprobador asignado: acta ${outcomeLabel}`,
+      type: acta.status === 'aprobada' ? 'success' : acta.status === 'rechazada' ? 'error' : 'warning',
+      actaId: id,
+      actaReference: acta.consecutivo,
+    }, areaApproval?.aprobador);
+
+    if (!deliveries?.length) {
+      return res.status(404).json({ error: `No se encontró un aprobador activo para el área ${acta.area}` });
+    }
     res.json({ emailNotifications: deliveries });
   } catch (error) {
     res.status(500).json({ error: error.message });

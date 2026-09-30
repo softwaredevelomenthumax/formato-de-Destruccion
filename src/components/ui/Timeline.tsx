@@ -8,9 +8,17 @@ interface TimelineProps {
 }
 
 export function ApprovalTimeline({ aprobaciones }: TimelineProps) {
+  const visibleAprobaciones = aprobaciones
+    .filter((ap) => ap.paso !== "costos")
+    .sort((first, second) => ["area", "hse"].indexOf(first.paso) - ["area", "hse"].indexOf(second.paso));
+
+  if (visibleAprobaciones.length === 0) {
+    return <p className="text-sm text-slate-500">Aún no hay etapas de aprobación registradas.</p>;
+  }
+
   return (
     <div className="space-y-0">
-      {aprobaciones.filter((ap) => ap.paso !== "costos").map((ap, i, visibleAprobaciones) => {
+      {visibleAprobaciones.map((ap, i) => {
         const isLast = i === visibleAprobaciones.length - 1;
         return (
           <div key={ap.paso} className="flex gap-3">
@@ -45,7 +53,7 @@ export function ApprovalTimeline({ aprobaciones }: TimelineProps) {
                  ap.status === "no_aplica" ? "No aplica" :
                  "Pendiente"}
               </p>
-              {ap.aprobador && <p className="text-xs text-slate-500 mt-0.5">Por: {ap.aprobador} · {ap.fechaAprobacion ? new Date(ap.fechaAprobacion).toLocaleDateString("es-CO") : ""}</p>}
+              {ap.aprobador && <p className="text-xs text-slate-500 mt-0.5">Por: {ap.aprobador}{ap.fechaAprobacion ? ` · ${new Date(ap.fechaAprobacion).toLocaleDateString("es-CO")}` : ""}</p>}
               {ap.comentario && <p className="text-xs text-slate-600 mt-1 bg-slate-50 rounded px-2 py-1">{ap.comentario}</p>}
               {ap.motivoRechazo && <p className="text-xs text-red-700 mt-1 bg-red-50 rounded px-2 py-1">{ap.motivoRechazo}</p>}
               {ap.ajustes && ap.ajustes.length > 0 && (

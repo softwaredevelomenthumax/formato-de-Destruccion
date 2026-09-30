@@ -263,7 +263,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       // Actualizar estado local
       let nextStatus: ActaStatus = acta.status;
       const updatedAprobaciones = asArray<ActaAprobacion>(acta.aprobaciones).map((ap) =>
-        ap.paso === paso ? { ...ap, status: "aprobado" as const } : ap
+        ap.paso === paso ? { ...ap, status: "aprobado" as const, aprobador, comentario } : ap
       );
 
       if (paso === "area") {
@@ -294,7 +294,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       await api.rejectActa(actaId, { paso, aprobador, motivo });
 
       const updatedAprobaciones = asArray<ActaAprobacion>(acta.aprobaciones).map((ap) =>
-        ap.paso === paso ? { ...ap, status: "rechazado" as const } : ap
+        ap.paso === paso ? { ...ap, status: "rechazado" as const, aprobador, motivoRechazo: motivo } : ap
       );
 
       setActas((current) => asArray<Acta>(current).map((a) =>
@@ -315,7 +315,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       await api.returnActa(actaId, { paso, aprobador, ajustes });
 
       const updatedAprobaciones = asArray<ActaAprobacion>(acta.aprobaciones).map((ap) =>
-        ap.paso === paso ? { ...ap, status: "devuelto" as const } : ap
+        ap.paso === paso ? { ...ap, status: "devuelto" as const, aprobador, ajustes } : ap
       );
 
       setActas((current) => asArray<Acta>(current).map((a) =>
