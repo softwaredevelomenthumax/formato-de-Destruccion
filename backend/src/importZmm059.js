@@ -29,6 +29,9 @@ async function importZmm059() {
   const sheet = workbook.Sheets[workbook.SheetNames[0]];
   const rows = XLSX.utils.sheet_to_json(sheet, { defval: '', raw: false });
   const pool = getPool();
+  const existingProducts = await pool.request()
+    .query("SELECT codigoMaterial, controlado FROM invima_products WHERE id LIKE 'zmm059-%'");
+  const controlStatusByMaterial = new Map(existingProducts.recordset.map((product) => [text(product.codigoMaterial), Boolean(product.controlado)]));
   const table = new sql.Table('invima_products');
   table.create = false;
   table.columns.add('id', sql.NVarChar(50), { nullable: false });
@@ -56,6 +59,7 @@ async function importZmm059() {
 
   for (const [index, row] of rows.entries()) {
     const material = text(row.Material);
+    const controlled = controlStatusByMaterial.get(material) ?? false;
     const materialType = text(row['Tipo material']).toUpperCase();
     const sourceCenter = text(row.Centro).toUpperCase();
     const company = companies[sourceCenter] || { code: sourceCenter, name: text(row.Empresa) || sourceCenter };
@@ -64,7 +68,7 @@ async function importZmm059() {
       materialType, text(row['Unidad medida base']), numberValue(row['Precio estándar']),
       sourceCenter, company.code, company.name, text(row['PB nivel centro']),
       text(row['Status mat.todos ce.']), text(row['Stat.mat.específ.ce.']), text(row['Planif.necesidades']),
-      'N/A', '', company.name, materialType, materialType === 'PT' || materialType === 'FERT' ? 1 : 0, text(row['Texto breve de material']), 1, 0,
+      'N/A', '', company.name, materialType, controlled ? 1 : 0, text(row['Texto breve de material']), 1, 0,
     );
   }
 

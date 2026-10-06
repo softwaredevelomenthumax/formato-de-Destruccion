@@ -1,16 +1,23 @@
 import { CheckCircle2, XCircle, Clock, RotateCcw, MinusCircle } from "lucide-react";
 import type { ActaAprobacion } from "../../types";
 
-const PASO_LABELS = { area: "Aprobación de Área", costos: "Aprobación de Costos", hse: "Aprobación HSE & S" };
+const PASO_LABELS = {
+  material_planeacion: "Planeación financiera",
+  material_lab_calidad: "Lab-calidad",
+  area: "Aprobación de Área",
+  costos: "Aprobación de Costos",
+  hse: "Aprobación HSE & S",
+};
+const PASO_ORDER = ["area", "costos", "material_planeacion", "material_lab_calidad", "hse"];
 
 interface TimelineProps {
   aprobaciones: ActaAprobacion[];
 }
 
 export function ApprovalTimeline({ aprobaciones }: TimelineProps) {
-  const visibleAprobaciones = aprobaciones
-    .filter((ap) => ap.paso !== "costos")
-    .sort((first, second) => ["area", "hse"].indexOf(first.paso) - ["area", "hse"].indexOf(second.paso));
+  const visibleAprobaciones = [...aprobaciones]
+    .filter((approval) => approval.paso !== "material_costos")
+    .sort((first, second) => PASO_ORDER.indexOf(first.paso) - PASO_ORDER.indexOf(second.paso));
 
   if (visibleAprobaciones.length === 0) {
     return <p className="text-sm text-slate-500">Aún no hay etapas de aprobación registradas.</p>;

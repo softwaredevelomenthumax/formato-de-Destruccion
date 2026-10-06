@@ -14,12 +14,14 @@ export const ROLE_LABELS: Record<Role, string> = {
   costos: "Costos",
   hse: "HSE & S",
   planeacion: "Planeación",
+  lab_calidad: "Lab-calidad",
 };
 
 export const ACTA_STATUS_LABELS: Record<ActaStatus, string> = {
   borrador: "Borrador",
   creada: "Creada",
   enviada: "Enviada",
+  pendiente_aprobacion_material: "Pendiente aprobación por material",
   pendiente_aprobacion_area: "Pendiente Aprobación Área",
   pendiente_costos: "Pendiente Costos",
   pendiente_hse: "Pendiente HSE",
@@ -47,6 +49,11 @@ export const ACTA_STATUS_COLORS: Record<
     bg: "bg-indigo-50",
     text: "text-indigo-700",
     border: "border-indigo-200",
+  },
+  pendiente_aprobacion_material: {
+    bg: "bg-cyan-50",
+    text: "text-cyan-700",
+    border: "border-cyan-200",
   },
   pendiente_aprobacion_area: {
     bg: "bg-amber-50",

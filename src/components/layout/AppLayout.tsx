@@ -10,8 +10,11 @@ export function AppLayout() {
   const location = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   if (!isAuthenticated) return <Navigate to="/login" replace />;
-  if (user?.rol === "costos" && location.pathname !== "/maestros/cecos") {
-    return <Navigate to="/maestros/cecos" replace />;
+  if (user?.rol === "costos") {
+    const path = location.pathname.replace(/\/$/, "") || "/";
+    const isActaDetail = /^\/actas\/[^/]+$/.test(path) && path !== "/actas/nueva";
+    const canAccess = ["/dashboard", "/perfil", "/actas", "/aprobaciones", "/maestros/cecos"].includes(path) || isActaDetail;
+    if (!canAccess) return <Navigate to="/dashboard" replace />;
   }
   return (
     <div className="flex h-screen min-w-0 overflow-hidden bg-slate-50">

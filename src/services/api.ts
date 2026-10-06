@@ -41,6 +41,8 @@ function getHeaders(includeAuth = true) {
 }
 
 export const api: Record<string, (...args: any[]) => Promise<any>> = {
+	getLoginUsernames: () => fetchJson(`${API_BASE_URL}/auth/users`, { headers: getHeaders(false) }),
+	devLogin: (username) => fetchJson(`${API_BASE_URL}/auth/dev-login`, { method: "POST", headers: getHeaders(false), body: JSON.stringify({ username }) }),
 	login: (credentials) => fetchJson(`${API_BASE_URL}/auth/login`, { method: "POST", headers: getHeaders(false), body: JSON.stringify(credentials) }),
 	refreshSession: () => fetchJson(`${API_BASE_URL}/auth/refresh`, { method: "POST", headers: getHeaders() }),
 	register: (data) => fetchJson(`${API_BASE_URL}/auth/register`, { method: "POST", headers: getHeaders(false), body: JSON.stringify(data) }),

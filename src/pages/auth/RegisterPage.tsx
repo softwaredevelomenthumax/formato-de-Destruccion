@@ -15,7 +15,7 @@ const schema = z.object({
   password: z.string().min(8, "Mínimo 8 caracteres"),
   confirmPassword: z.string(),
   area: z.string().min(1, "Seleccione un área"),
-  rolSolicitado: z.enum(["solicitante", "aprobador_area", "costos", "hse", "planeacion"] as const),
+  rolSolicitado: z.enum(["solicitante", "aprobador_area", "costos", "hse", "planeacion", "lab_calidad"] as const),
   email: z.string().email("Correo inválido").optional().or(z.literal("")),
 }).refine((d) => d.password === d.confirmPassword, {
   path: ["confirmPassword"],
@@ -33,6 +33,7 @@ const REQUESTABLE_ROLES: { value: Role; label: string }[] = [
   { value: "costos", label: ROLE_LABELS["costos"] },
   { value: "hse", label: ROLE_LABELS["hse"] },
   { value: "planeacion", label: ROLE_LABELS["planeacion"] },
+  { value: "lab_calidad", label: ROLE_LABELS["lab_calidad"] },
 ];
 
 export default function RegisterPage() {

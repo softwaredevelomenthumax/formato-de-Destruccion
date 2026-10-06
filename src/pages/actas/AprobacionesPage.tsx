@@ -6,6 +6,7 @@ import { useApp } from "../../context/AppContext";
 import { ActaStatusBadge } from "../../components/ui/Badge";
 import { EmptyState } from "../../components/ui/EmptyState";
 import type { ActaStatus } from "../../types";
+import { getFirstPendingMaterialApproval, MATERIAL_APPROVAL_ROLE_BY_STEP } from "../../constants/materialTypes";
 
 function normalizeArea(value?: string) {
   return String(value || "").trim().toLocaleLowerCase("es-CO").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, " ");
@@ -17,7 +18,7 @@ export default function AprobacionesPage() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    if (user?.rol !== "hse") return;
+    if (!user || !["hse", "costos", "planeacion", "lab_calidad"].includes(user.rol)) return;
 
     void refreshActas();
     const refreshInterval = window.setInterval(() => void refreshActas(), 30000);
@@ -39,12 +40,20 @@ export default function AprobacionesPage() {
 
   const statusMap: Partial<Record<string, ActaStatus>> = {
     aprobador_area: "pendiente_aprobacion_area",
+    costos: "pendiente_costos",
     hse: "pendiente_hse",
   };
 
   const targetStatus = statusMap[user.rol];
   const pendingActas = Array.isArray(actas)
-    ? actas.filter((a) => a && a.status === targetStatus && (user.rol !== "aprobador_area" || normalizeArea(a.area) === normalizeArea(user.area)))
+    ? actas.filter((a) => {
+      if (!a) return false;
+      if (a.status === "pendiente_aprobacion_material") {
+        const activeStep = getFirstPendingMaterialApproval(a.aprobaciones || []);
+        if (activeStep && MATERIAL_APPROVAL_ROLE_BY_STEP[activeStep] === user.rol) return true;
+      }
+      return Boolean(targetStatus && a.status === targetStatus && (user.rol !== "aprobador_area" || normalizeArea(a.area) === normalizeArea(user.area)));
+    })
     : [];
 
   return (

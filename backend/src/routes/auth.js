@@ -6,6 +6,59 @@ import { sendWelcomeEmail } from '../services/emailService.js';
 
 const router = express.Router();
 
+function isLocalDevelopmentLoginEnabled(req) {
+  const remoteAddress = req.socket.remoteAddress;
+  const isLoopback = ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(remoteAddress);
+  return process.env.NODE_ENV !== 'production'
+    && process.env.ENABLE_DEV_LOGIN === 'true'
+    && isLoopback;
+}
+
+router.get('/users', async (req, res) => {
+  try {
+    const result = await getPool().request()
+      .query("SELECT username FROM users WHERE LOWER(LTRIM(RTRIM(status))) = 'activo' ORDER BY username");
+    res.json({
+      usernames: result.recordset.map((user) => user.username),
+      passwordlessLoginEnabled: isLocalDevelopmentLoginEnabled(req),
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.post('/dev-login', async (req, res) => {
+  if (!isLocalDevelopmentLoginEnabled(req)) {
+    return res.status(404).json({ error: 'El acceso de prueba no está habilitado' });
+  }
+
+  try {
+    const username = String(req.body.username || '').trim();
+    const result = await getPool().request()
+      .input('username', username)
+      .query("SELECT id, username, nombre, email, area, rol, status FROM users WHERE username = @username AND LOWER(LTRIM(RTRIM(status))) = 'activo'");
+    const user = result.recordset[0];
+    if (!user) return res.status(401).json({ error: 'Seleccione una cuenta activa' });
+
+    const normalizedRole = String(user.rol || '').trim().toLowerCase().replace(/[ -]+/g, '_');
+    const role = ['administrador_global', 'global_admin'].includes(normalizedRole)
+      ? 'admin_global'
+      : normalizedRole === 'admin' ? 'administrador' : normalizedRole;
+    const token = jwt.sign(
+      { id: user.id, username: user.username, rol: role, area: user.area },
+      process.env.JWT_SECRET || 'secret',
+      { expiresIn: process.env.JWT_EXPIRY || '7d' }
+    );
+
+    res.json({
+      token,
+      user: { ...user, rol: role },
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Renueva el rol y los datos de sesión desde la base de datos. El token previo
 // puede tener un rol antiguo si un administrador acaba de actualizar el usuario.
 router.post('/refresh', async (req, res) => {

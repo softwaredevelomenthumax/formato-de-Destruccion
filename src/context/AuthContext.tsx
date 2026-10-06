@@ -2,7 +2,7 @@ import { createContext, useContext, useState, useEffect, useCallback, useRef, ty
 import type { Role, User } from "../types";
 import { api } from "../services/api.ts";
 
-const VALID_ROLES: Role[] = ["administrador", "admin_global", "solicitante", "aprobador_area", "costos", "hse", "planeacion"];
+const VALID_ROLES: Role[] = ["administrador", "admin_global", "solicitante", "aprobador_area", "costos", "hse", "planeacion", "lab_calidad"];
 
 function normalizeRole(value: unknown): Role | null {
   if (typeof value !== "string") return null;
@@ -43,6 +43,7 @@ interface AuthContextType {
   user: User | null;
   users: User[];
   login: (username: string, password: string) => Promise<{ success: boolean; message: string }>;
+  devLogin: (username: string) => Promise<{ success: boolean; message: string }>;
   logout: () => void;
   updateCurrentUser: (changes: Partial<User>) => void;
   refreshSession: () => Promise<void>;
@@ -147,6 +148,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const devLogin = async (username: string) => {
+    try {
+      const response = await api.devLogin(username);
+      if (!response.token || !response.user) return { success: false, message: response.error || "No se pudo iniciar la sesión de prueba" };
+
+      sessionStorage.removeItem("add_current_user");
+      sessionStorage.removeItem("add_token");
+      localStorage.removeItem("add-sidebar-collapsed");
+      setToken(response.token);
+      setUser(normalizeUser(response.user) ?? null);
+      return { success: true, message: "Sesión de prueba iniciada" };
+    } catch (error) {
+      return { success: false, message: error instanceof Error ? error.message : "No se pudo iniciar la sesión de prueba" };
+    }
+  };
+
   const logout = () => {
     sessionStorage.removeItem("add_current_user");
     sessionStorage.removeItem("add_token");
@@ -159,7 +176,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, users, login, logout, updateCurrentUser, refreshSession, isAuthenticated: !!user, token, setToken }}>
+    <AuthContext.Provider value={{ user, users, login, devLogin, logout, updateCurrentUser, refreshSession, isAuthenticated: !!user, token, setToken }}>
       {children}
     </AuthContext.Provider>
   );

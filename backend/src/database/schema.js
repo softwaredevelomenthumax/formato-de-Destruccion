@@ -223,11 +223,6 @@ export async function initializeDatabase() {
       IF COL_LENGTH('invima_products', 'statusMaterialTodosCentros') IS NULL ALTER TABLE invima_products ADD statusMaterialTodosCentros NVARCHAR(100);
       IF COL_LENGTH('invima_products', 'statusMaterialCentro') IS NULL ALTER TABLE invima_products ADD statusMaterialCentro NVARCHAR(100);
       IF COL_LENGTH('invima_products', 'planifNecesidades') IS NULL ALTER TABLE invima_products ADD planifNecesidades NVARCHAR(100);
-      UPDATE invima_products
-      SET controlado = CASE
-        WHEN UPPER(LTRIM(RTRIM(ISNULL(clase, '')))) IN ('PT', 'FERT') THEN 1
-        ELSE ISNULL(controlado, 0)
-      END;
       IF COL_LENGTH('actas', 'cecoId') IS NULL ALTER TABLE actas ADD cecoId NVARCHAR(50);
       IF COL_LENGTH('actas', 'invimaProductId') IS NULL ALTER TABLE actas ADD invimaProductId NVARCHAR(50);
       IF COL_LENGTH('actas', 'sapCodeId') IS NULL ALTER TABLE actas ADD sapCodeId NVARCHAR(50);
@@ -251,21 +246,19 @@ export async function initializeDatabase() {
         ALTER TABLE cecos ADD CONSTRAINT UQ_cecos_empresa_ceco UNIQUE (empresaCode, ceco);
     `);
 
-    // El rol Costos ya no participa en la aprobación de actas. Desbloquear
-    // registros que quedaron esperando ese paso y entregarlos a HSE.
     await pool.request().query(`
-      BEGIN TRANSACTION;
-
-      UPDATE acta_aprobaciones
-      SET status = 'no_aplica', aprobador = NULL, comentario = NULL
-      WHERE paso = 'costos'
-        AND actaId IN (SELECT id FROM actas WHERE status = 'pendiente_costos');
+      DELETE FROM acta_aprobaciones
+      WHERE paso = 'material_costos';
 
       UPDATE actas
-      SET status = 'pendiente_hse', requiereCostos = 0, updatedAt = GETDATE()
-      WHERE status = 'pendiente_costos';
+      SET status = 'pendiente_aprobacion_area', updatedAt = GETDATE()
+      WHERE status = 'pendiente_aprobacion_material';
 
-      COMMIT TRANSACTION;
+      UPDATE acta_aprobaciones
+      SET status = 'pendiente', aprobador = NULL, comentario = NULL, motivo = NULL, ajustes = NULL
+      WHERE paso = 'area'
+        AND actaId IN (SELECT id FROM actas WHERE status = 'pendiente_aprobacion_area')
+        AND status = 'no_aplica';
     `);
 
     console.log('✓ Tablas creadas exitosamente');

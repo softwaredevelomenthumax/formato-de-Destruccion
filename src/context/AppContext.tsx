@@ -40,7 +40,7 @@ interface AppContextType {
   updateActa: (id: string, updates: Partial<Acta>, histEntry?: Omit<ActaHistorial, "id">) => Promise<void>;
   deleteActa: (id: string) => Promise<boolean>;
   sendActa: (id: string, userId: string, userName: string) => Promise<void>;
-  approveActa: (actaId: string, paso: ActaAprobacion["paso"], aprobador: string, comentario: string) => Promise<{ emailNotifications?: Array<{ sent: boolean; reason?: string }> }>;
+    approveActa: (actaId: string, paso: ActaAprobacion["paso"], aprobador: string, comentario: string, requiereCostos?: boolean) => Promise<{ emailNotifications?: Array<{ sent: boolean; reason?: string }>; nextApproval?: string }>;
   rejectActa: (actaId: string, paso: ActaAprobacion["paso"], aprobador: string, motivo: string) => Promise<void>;
   returnActa: (actaId: string, paso: ActaAprobacion["paso"], aprobador: string, ajustes: ActaAprobacion["ajustes"]) => Promise<void>;
 
@@ -87,9 +87,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     try {
       setLoading(true);
       const canManageUsers = user?.rol === "administrador" || user?.rol === "admin_global";
-      const canViewActas = user?.rol !== "costos";
       const [actasResult, usersResult, solicitudesResult, invimaResult] = await Promise.allSettled([
-        canViewActas ? api.getActas() : Promise.resolve([]),
+        api.getActas(),
         canManageUsers ? api.getUsers() : Promise.resolve([]),
         api.getSolicitudes(),
         api.getInvimaProducts(),
@@ -244,37 +243,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
       const rc = false;
       await api.submitActa(id, { requiereCostos: rc });
-      setActas((current) => asArray<Acta>(current).map((currentActa) =>
-        currentActa.id === id ? { ...currentActa, status: newStatus, requiereCostos: rc } : currentActa
-      ));
+      const updatedActa = await api.getActa(id) as Acta;
+      setActas((current) => asArray<Acta>(current).map((currentActa) => currentActa.id === id ? updatedActa : currentActa));
     } catch (error) {
       console.error("Error enviando acta:", error);
       throw error;
     }
   };
 
-  const approveActa = async (actaId: string, paso: ActaAprobacion["paso"], aprobador: string, comentario: string) => {
+  const approveActa = async (actaId: string, paso: ActaAprobacion["paso"], aprobador: string, comentario: string, requiereCostos?: boolean) => {
     try {
       const acta = actas.find((a) => a.id === actaId);
       if (!acta) throw new Error("No se encontró el acta para aprobar");
 
-      const approvalResult = await api.approveActa(actaId, { paso, aprobador, comentario });
-
-      // Actualizar estado local
-      let nextStatus: ActaStatus = acta.status;
-      const updatedAprobaciones = asArray<ActaAprobacion>(acta.aprobaciones).map((ap) =>
-        ap.paso === paso ? { ...ap, status: "aprobado" as const, aprobador, comentario } : ap
-      );
-
-      if (paso === "area") {
-        nextStatus = "pendiente_hse";
-      } else if (paso === "hse") {
-        nextStatus = "aprobada";
-      }
-
-      setActas((current) => asArray<Acta>(current).map((a) =>
-        a.id === actaId ? { ...a, status: nextStatus, aprobaciones: updatedAprobaciones } : a
-      ));
+      const approvalResult = await api.approveActa(actaId, { paso, aprobador, comentario, requiereCostos });
+      const updatedActa = await api.getActa(actaId) as Acta;
+      setActas((current) => asArray<Acta>(current).map((a) => a.id === actaId ? updatedActa : a));
 
       return approvalResult;
 
@@ -293,13 +277,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
       await api.rejectActa(actaId, { paso, aprobador, motivo });
 
-      const updatedAprobaciones = asArray<ActaAprobacion>(acta.aprobaciones).map((ap) =>
-        ap.paso === paso ? { ...ap, status: "rechazado" as const, aprobador, motivoRechazo: motivo } : ap
-      );
-
-      setActas((current) => asArray<Acta>(current).map((a) =>
-        a.id === actaId ? { ...a, status: "rechazada", aprobaciones: updatedAprobaciones } : a
-      ));
+      const updatedActa = await api.getActa(actaId) as Acta;
+      setActas((current) => asArray<Acta>(current).map((a) => a.id === actaId ? updatedActa : a));
 
     } catch (error) {
       console.error("Error rechazando acta:", error);
@@ -314,13 +293,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
       await api.returnActa(actaId, { paso, aprobador, ajustes });
 
-      const updatedAprobaciones = asArray<ActaAprobacion>(acta.aprobaciones).map((ap) =>
-        ap.paso === paso ? { ...ap, status: "devuelto" as const, aprobador, ajustes } : ap
-      );
-
-      setActas((current) => asArray<Acta>(current).map((a) =>
-        a.id === actaId ? { ...a, status: "devuelta_ajustes", aprobaciones: updatedAprobaciones } : a
-      ));
+      const updatedActa = await api.getActa(actaId) as Acta;
+      setActas((current) => asArray<Acta>(current).map((a) => a.id === actaId ? updatedActa : a));
 
     } catch (error) {
       console.error("Error devolviendo acta:", error);

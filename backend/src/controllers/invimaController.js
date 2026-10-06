@@ -1,12 +1,10 @@
 import { getPool } from '../database/connection.js';
 
-const isControlledType = (value) => ['PT', 'FERT'].includes(String(value || '').trim().toUpperCase());
-
 // Crear producto INVIMA
 export async function createInvimaProduct(req, res) {
   try {
     const { codigoMaterial, fabricante, clase, estatusSap, codigo, productName, canal, registryNumber, estadoInvima, internalStatus, holder, tipoMedicamento, controlado, presentacion, empresaCode, empresa, requiereSap, requiereInvima, unidadMedidaBase, precioEstandar, densidad, pesoUnidad } = req.body;
-    const resolvedControlado = isControlledType(clase) || Boolean(controlado);
+    const resolvedControlado = Boolean(controlado);
     const pool = getPool();
 
     const id = `inv${Date.now()}`;
@@ -62,8 +60,8 @@ export async function updateInvimaProduct(req, res) {
   try {
     const { id } = req.params;
     const updates = { ...req.body };
-    if (Object.prototype.hasOwnProperty.call(updates, 'clase')) {
-      updates.controlado = isControlledType(updates.clase) || Boolean(updates.controlado);
+    if (Object.prototype.hasOwnProperty.call(updates, 'controlado')) {
+      updates.controlado = Boolean(updates.controlado);
     }
     const pool = getPool();
 

@@ -1,3 +1,4 @@
+import { getFirstPendingMaterialApproval, MATERIAL_APPROVAL_ROLE_BY_STEP } from "../../constants/materialTypes";
 import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router";
 import {
@@ -16,6 +17,7 @@ import { es } from "date-fns/locale";
 import { toast } from "sonner";
 import type { AjusteField } from "../../types";
 import { api } from "../../services/api";
+import { normalizeActaAttachments, parseActaAttachment } from "../../utils/actaAttachments";
 
 export default function ActaDetailPage() {
   const { id } = useParams();
@@ -25,6 +27,7 @@ export default function ActaDetailPage() {
 
   const [showApprove, setShowApprove] = useState(false);
   const [isApproving, setIsApproving] = useState(false);
+  const [requiresCostApproval, setRequiresCostApproval] = useState(false);
   const [isResendingHse, setIsResendingHse] = useState(false);
   const [isResendingAreaApprover, setIsResendingAreaApprover] = useState(false);
   const [showReject, setShowReject] = useState(false);
@@ -66,8 +69,11 @@ export default function ActaDetailPage() {
   if (!user) return null;
 
   const safeHistorial = Array.isArray(acta.historial) ? acta.historial : [];
-  const safeAdjuntos = Array.isArray(acta.adjuntos) ? acta.adjuntos : [];
+  const safeAdjuntos = normalizeActaAttachments(acta.adjuntos);
   const safeAprobaciones = Array.isArray(acta.aprobaciones) ? acta.aprobaciones : [];
+    const activeMaterialApproval = acta.status === "pendiente_aprobacion_material"
+      ? getFirstPendingMaterialApproval(safeAprobaciones)
+      : undefined;
   const safeCosto = Number.isFinite(Number(acta.costoDestruccion)) ? Number(acta.costoDestruccion) : 0;
   const safePeso = Number.isFinite(Number(acta.pesoKg)) ? Number(acta.pesoKg) : 0;
   const safeCantidad = Number.isFinite(Number(acta.cantidadUnidades)) ? Number(acta.cantidadUnidades) : 0;
@@ -95,18 +101,24 @@ export default function ActaDetailPage() {
   };
 
   const getPasoForRole = () => {
+    if (activeMaterialApproval && MATERIAL_APPROVAL_ROLE_BY_STEP[activeMaterialApproval] === user.rol) return activeMaterialApproval;
     if (user.rol === "aprobador_area") return "area" as const;
-    if (user.rol === "hse") return "hse" as const;
+    if (user.rol === "costos" && acta.status === "pendiente_costos") return "costos" as const;
+    if (user.rol === "hse" && acta.status === "pendiente_hse") return "hse" as const;
     return null;
   };
 
   const paso = getPasoForRole();
-  const canApprove = paso && acta.status === `pendiente_${paso === "area" ? "aprobacion_area" : paso}` && acta.solicitanteId !== user.id && (paso !== "area" || normalizeArea(user.area) === normalizeArea(acta.area));
+  const approvalStatus = paso?.startsWith("material_")
+    ? "pendiente_aprobacion_material"
+    : paso === "area" ? "pendiente_aprobacion_area" : paso ? `pendiente_${paso}` : undefined;
+  const canApprove = Boolean(paso && acta.status === approvalStatus && acta.solicitanteId !== user.id && (paso !== "area" || normalizeArea(user.area) === normalizeArea(acta.area)));
+  const costApprovalTypes = new Set(["ROH", "VERP", "FERT", "HALB"]);
+  const requiresCostsByMaterialType = materialList.some((material) => costApprovalTypes.has(normalizeMaterialType(material.tipoMaterial)));
   const canEdit = user.rol === "solicitante" && acta.solicitanteId === user.id && (acta.status === "borrador" || acta.status === "devuelta_ajustes");
   const canSend = user.rol === "solicitante" && acta.solicitanteId === user.id && acta.status === "borrador";
   const canResendHse = acta.status === "pendiente_hse" && ["administrador", "admin_global", "aprobador_area"].includes(user.rol);
-  const isFinalActa = ["aprobada", "rechazada", "devuelta_ajustes"].includes(acta.status);
-  const canResendAreaApprover = isFinalActa
+  const canResendAreaApprover = ["aprobada", "rechazada", "devuelta_ajustes"].includes(acta.status)
     && ["administrador", "admin_global", "aprobador_area"].includes(user.rol)
     && (user.rol !== "aprobador_area" || normalizeArea(user.area) === normalizeArea(acta.area));
 
@@ -132,7 +144,9 @@ export default function ActaDetailPage() {
     try {
       const result = await api.notifyAreaApprover(acta.id);
       const failed = result.emailNotifications?.filter((delivery: { sent: boolean }) => !delivery.sent) ?? [];
-      if (failed.length) {
+      if (failed.some((delivery: { reason?: string }) => delivery.reason === "no_email")) {
+        toast.warning("Se creó el aviso, pero el aprobador no tiene un correo registrado en su usuario.");
+      } else if (failed.length) {
         toast.warning("Se creó el aviso, pero no se pudo enviar el correo. Revisa la configuración y el registro del backend.");
       } else {
         toast.success("Se reenvió el aviso al aprobador de área.");
@@ -154,11 +168,12 @@ export default function ActaDetailPage() {
     if (!paso || isApproving) return;
     setIsApproving(true);
     try {
-      const result = await approveActa(acta.id, paso, user.username, approveComment);
+      const result = await approveActa(acta.id, paso, user.username, approveComment, paso === "area" ? requiresCostsByMaterialType : undefined);
       const failedDeliveries = result.emailNotifications?.filter((delivery) => !delivery.sent) ?? [];
-      if (paso === "area" && failedDeliveries.length > 0) {
+      const nextApprovalRole = result.nextApproval || (paso === "area" ? (requiresCostsByMaterialType ? "Costos" : "HSE") : paso === "costos" ? "HSE" : null);
+      if (nextApprovalRole && failedDeliveries.length > 0) {
         const reasonMessages: Record<string, string> = {
-          no_email: "hay usuarios HSE sin correo registrado",
+          no_email: `hay usuarios de ${nextApprovalRole} sin correo registrado`,
           not_configured: "el correo del servidor no está configurado",
           no_sender: "falta configurar el remitente del correo",
           smtp_timeout: "el servidor SMTP no respondió",
@@ -166,11 +181,11 @@ export default function ActaDetailPage() {
           notification_failed: "no se pudo crear la notificación de correo",
         };
         const reasons = [...new Set(failedDeliveries.map((delivery) => reasonMessages[delivery.reason || ""] || "ocurrió un error al enviar el correo"))];
-        toast.warning(`Acta aprobada, pero no llegó el correo a HSE: ${reasons.join("; ")}.`);
-      } else if (paso === "area" && !result.emailNotifications?.length) {
-        toast.warning("Acta aprobada, pero no se encontraron usuarios HSE activos para enviar el correo.");
+        toast.warning(`Acta aprobada, pero no llegó el correo a ${nextApprovalRole}: ${reasons.join("; ")}.`);
+      } else if (nextApprovalRole && !result.emailNotifications?.length) {
+        toast.warning(`Acta aprobada, pero no se encontraron usuarios ${nextApprovalRole} activos para enviar el correo.`);
       } else {
-        toast.success(paso === "area" ? "Acta aprobada y correo enviado a HSE" : "Acta aprobada exitosamente");
+        toast.success(nextApprovalRole ? `Acta aprobada y correo enviado a ${nextApprovalRole}` : "Acta aprobada exitosamente");
       }
       setShowApprove(false);
       setApproveComment("");
@@ -348,10 +363,32 @@ export default function ActaDetailPage() {
             <InfoCard title="Documentos Adjuntos">
               <div className="space-y-1.5">
                 {safeAdjuntos.map((adj, i) => (
-                  <div key={i} className="flex items-center gap-2 text-sm text-blue-700 hover:text-blue-900 cursor-pointer">
-                    <FileText size={14} />
-                    <span className="underline">{adj}</span>
-                  </div>
+                  (() => {
+                    const attachment = parseActaAttachment(adj);
+                    if (attachment?.type.startsWith("image/")) {
+                      return (
+                        <figure key={i} className="max-w-lg overflow-hidden rounded-lg border border-slate-200 bg-slate-50">
+                          <img src={attachment.dataUrl} alt={attachment.name} className="max-h-96 w-full object-contain" />
+                          <figcaption className="flex items-center justify-between gap-3 border-t border-slate-200 px-3 py-2 text-sm">
+                            <span className="truncate text-slate-700">{attachment.name}</span>
+                            <a href={attachment.dataUrl} download={attachment.name} className="shrink-0 text-blue-700 hover:text-blue-900">Descargar</a>
+                          </figcaption>
+                        </figure>
+                      );
+                    }
+
+                    return attachment ? (
+                      <a key={i} href={attachment.dataUrl} download={attachment.name} className="flex items-center gap-2 text-sm text-blue-700 hover:text-blue-900">
+                        <FileText size={14} />
+                        <span className="underline">{attachment.name}</span>
+                      </a>
+                    ) : (
+                      <div key={i} className="flex items-center gap-2 text-sm text-slate-600">
+                        <FileText size={14} />
+                        <span>{adj}</span>
+                      </div>
+                    );
+                  })()
                 ))}
               </div>
             </InfoCard>
@@ -404,6 +441,13 @@ export default function ActaDetailPage() {
       >
         <div className="space-y-3">
           <p className="text-sm text-slate-600">¿Confirma la aprobación del acta <strong>{acta.consecutivo}</strong>?</p>
+          {paso === "area" && (
+            <p className={`rounded-lg border p-3 text-sm ${requiresCostsByMaterialType ? "border-orange-200 bg-orange-50 text-orange-800" : "border-slate-200 bg-slate-50 text-slate-600"}`}>
+              {requiresCostsByMaterialType
+                ? "Por el tipo de material, el acta debe pasar por aprobación de Costos."
+                : "Por el tipo de material, el acta continuará directamente a HSE."}
+            </p>
+          )}
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">Comentario (opcional)</label>
             <textarea value={approveComment} onChange={(e) => setApproveComment(e.target.value)} rows={3}

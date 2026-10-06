@@ -9,6 +9,7 @@ import {
 import { useAuth } from "../../context/AuthContext";
 import { useApp } from "../../context/AppContext";
 import type { Role } from "../../types";
+import { getFirstPendingMaterialApproval, MATERIAL_APPROVAL_ROLE_BY_STEP } from "../../constants/materialTypes";
 import logi from "../../public/logi.png";
 
 import type { ReactNode } from "react";
@@ -22,11 +23,11 @@ interface NavItem {
 }
 
 const NAV_ITEMS: NavItem[] = [
-  { to: "/dashboard", label: "Dashboard", icon: <LayoutDashboard size={18} />, roles: ["administrador", "admin_global", "solicitante", "aprobador_area", "hse"] },
-  { to: "/perfil", label: "Mi perfil", icon: <UserCircle2 size={18} />, roles: ["administrador", "admin_global", "solicitante", "aprobador_area", "hse", "planeacion"] },
-  { to: "/actas", label: "Ver actas", icon: <FileText size={18} />, roles: ["administrador", "admin_global", "solicitante", "aprobador_area", "hse"] },
+  { to: "/dashboard", label: "Dashboard", icon: <LayoutDashboard size={18} />, roles: ["administrador", "admin_global", "solicitante", "aprobador_area", "costos", "hse", "planeacion", "lab_calidad"] },
+  { to: "/perfil", label: "Mi perfil", icon: <UserCircle2 size={18} />, roles: ["administrador", "admin_global", "solicitante", "aprobador_area", "costos", "hse", "planeacion", "lab_calidad"] },
+  { to: "/actas", label: "Ver actas", icon: <FileText size={18} />, roles: ["administrador", "admin_global", "solicitante", "aprobador_area", "costos", "hse", "planeacion", "lab_calidad"] },
   { to: "/actas/nueva", label: "Nueva Acta", icon: <FilePlus size={18} />, roles: ["solicitante"] },
-  { to: "/aprobaciones", label: "Pendientes de Aprobación", icon: <ClipboardCheck size={18} />, roles: ["aprobador_area", "hse"] },
+  { to: "/aprobaciones", label: "Pendientes de Aprobación", icon: <ClipboardCheck size={18} />, roles: ["aprobador_area", "costos", "hse", "planeacion", "lab_calidad"] },
   { to: "/usuarios", label: "Gestión de Usuarios", icon: <Users size={18} />, roles: ["administrador", "admin_global"] },
   { to: "/maestros/cecos", label: "Maestro CeCos", icon: <Building2 size={18} />, roles: ["costos"] },
   { to: "/maestros/invima", label: "Maestro unificado", icon: <Package size={18} />, roles: ["planeacion"] },
@@ -106,11 +107,18 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps) {
 
   const safeSolicitudes = Array.isArray(solicitudes) ? solicitudes : [];
   const pendingSolicitudes = safeSolicitudes.filter((s) => s.status === "pendiente").length;
+  const pendingMaterialCount = user.rol === "planeacion" || user.rol === "lab_calidad" ? actas.filter((acta) => {
+    if (acta.status !== "pendiente_aprobacion_material") return false;
+    const activeStep = getFirstPendingMaterialApproval(acta.aprobaciones || []);
+    return activeStep && MATERIAL_APPROVAL_ROLE_BY_STEP[activeStep] === user.rol;
+  }).length : 0;
   const pendingApprovals = user.rol === "aprobador_area"
     ? actas.filter((acta) => acta.status === "pendiente_aprobacion_area" && normalizeArea(acta.area) === normalizeArea(user.area)).length
-    : user.rol === "hse"
-      ? actas.filter((acta) => acta.status === "pendiente_hse").length
-      : 0;
+    : user.rol === "costos"
+      ? pendingMaterialCount + actas.filter((acta) => acta.status === "pendiente_costos").length
+      : user.rol === "hse"
+        ? actas.filter((acta) => acta.status === "pendiente_hse").length
+        : pendingMaterialCount;
 
   const filteredNav = NAV_ITEMS.filter((item) => item.roles.includes(user.rol));
   const toggleTheme = () => setTheme((t) => (t === "dark" ? "light" : "dark"));

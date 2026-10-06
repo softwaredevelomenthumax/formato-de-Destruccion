@@ -18,8 +18,12 @@ import { MATERIAL_TYPE_OPTIONS, normalizeMaterialType } from "../../constants/ma
 import type { ActaMaterial, CausalDestruccion, Ceco, Empresa, InvimaProduct } from "../../types";
 import { api } from "../../services/api.ts";
 import { toast } from "sonner";
+import { parseActaAttachment, readFileAsDataUrl, serializeActaAttachment } from "../../utils/actaAttachments";
 
 const ACTA_DRAFT_STORAGE_KEY = "humax-acta-draft";
+const MAX_ATTACHMENT_SIZE = 10 * 1024 * 1024;
+const MAX_TOTAL_ATTACHMENT_SIZE = 35 * 1024 * 1024;
+const ALLOWED_ATTACHMENT_EXTENSIONS = new Set(["pdf", "doc", "docx", "xls", "xlsx"]);
 
 const STEPS = [
   { label: "Info General" },
@@ -49,7 +53,7 @@ const INVIMA_CLASSIFICATIONS = new Set(["MP", "ME", "PT"]);
 const requiresExpiryDate = (value: unknown) => MATERIAL_TYPES_WITH_EXPIRY.has(normalizeMaterialType(value));
 
 const isControlledMaterial = (product: InvimaProduct) =>
-  product.controlado || ["PT", "FERT"].includes(String(product.clase || "").trim().toUpperCase());
+  product.controlado;
 
 const normalizeClassification = (value: unknown) => {
   const normalized = String(value || "").trim().toUpperCase();
@@ -348,6 +352,7 @@ export default function ActaCreatePage() {
   const [otraCausal, setOtraCausal] = useState("");
   const [observaciones, setObservaciones] = useState("");
   const [adjuntos, setAdjuntos] = useState<string[]>([]);
+  const attachmentInputRef = useRef<HTMLInputElement | null>(null);
   const [showCausalModal, setShowCausalModal] = useState(false);
   const [selectedEmpresa, setSelectedEmpresa] = useState<Empresa>("Humax");
   const [invimaSearch, setInvimaSearch] = useState("");
@@ -1390,10 +1395,11 @@ export default function ActaCreatePage() {
           <div className="space-y-5">
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-2">Condición de control *</label>
+              {materials.length > 0 && <p className="mb-2 text-xs text-slate-500">Todos los productos de un acta deben tener la misma condición de control.</p>}
               <div className="grid grid-cols-2 gap-3">
                 {[true, false].map((controlled) => (
-                  <label key={String(controlled)} className={`flex items-center justify-center gap-2 rounded-lg border px-4 py-3 text-sm font-semibold cursor-pointer transition-all ${form2.watch("sustanciaControlada") === controlled ? "border-blue-500 bg-blue-50 text-blue-700 ring-1 ring-blue-200" : "border-slate-300 bg-white text-slate-700 hover:border-blue-300"}`}>
-                    <input type="radio" checked={form2.watch("sustanciaControlada") === controlled} onChange={() => form2.setValue("sustanciaControlada", controlled, { shouldValidate: true, shouldDirty: true })} className="h-4 w-4 accent-blue-600" />
+                  <label key={String(controlled)} className={`flex items-center justify-center gap-2 rounded-lg border px-4 py-3 text-sm font-semibold transition-all ${materials.length > 0 ? "cursor-not-allowed opacity-60" : "cursor-pointer"} ${form2.watch("sustanciaControlada") === controlled ? "border-blue-500 bg-blue-50 text-blue-700 ring-1 ring-blue-200" : "border-slate-300 bg-white text-slate-700 hover:border-blue-300"}`}>
+                    <input type="radio" checked={form2.watch("sustanciaControlada") === controlled} disabled={materials.length > 0} onChange={() => form2.setValue("sustanciaControlada", controlled, { shouldValidate: true, shouldDirty: true })} className="h-4 w-4 accent-blue-600" />
                     {controlled ? "Controlada" : "No controlada"}
                   </label>
                 ))}
@@ -1809,24 +1815,73 @@ export default function ActaCreatePage() {
             </div>
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-2">Documentos soporte</label>
-              <div
-                className="border-2 border-dashed border-slate-300 rounded-xl p-6 text-center hover:border-blue-400 hover:bg-blue-50 transition-all cursor-pointer"
-                onClick={() => {
-                  const name = prompt("Nombre del archivo (simulado):");
-                  if (name) setAdjuntos((prev) => [...prev, name]);
+              <input
+                ref={attachmentInputRef}
+                type="file"
+                accept=".pdf,.doc,.docx,.xls,.xlsx,image/*"
+                multiple
+                className="sr-only"
+                onChange={async (event) => {
+                  const selectedFiles = Array.from(event.target.files || []);
+                  event.target.value = "";
+                  const attachmentsToAdd: string[] = [];
+                  let totalAttachmentSize = adjuntos.reduce(
+                    (total, attachment) => total + (parseActaAttachment(attachment)?.size || 0),
+                    0,
+                  );
+
+                  for (const file of selectedFiles) {
+                    const extension = file.name.split(".").pop()?.toLocaleLowerCase();
+                    const isImage = file.type.startsWith("image/");
+                    const isSupportedDocument = !!extension && ALLOWED_ATTACHMENT_EXTENSIONS.has(extension);
+                    if (!isImage && !isSupportedDocument) {
+                      toast.error(`${file.name}: formato no permitido. Adjunta imágenes, PDF, Word o Excel.`);
+                      continue;
+                    }
+                    if (file.size > MAX_ATTACHMENT_SIZE) {
+                      toast.error(`${file.name}: supera el límite de 10 MB.`);
+                      continue;
+                    }
+                    if (totalAttachmentSize + file.size > MAX_TOTAL_ATTACHMENT_SIZE) {
+                      toast.error("Los documentos adjuntos no pueden superar 35 MB en total.");
+                      continue;
+                    }
+
+                    try {
+                      const dataUrl = await readFileAsDataUrl(file);
+                      attachmentsToAdd.push(serializeActaAttachment({
+                        name: file.name,
+                        type: file.type || "application/octet-stream",
+                        dataUrl,
+                        size: file.size,
+                      }));
+                      totalAttachmentSize += file.size;
+                    } catch (error) {
+                      toast.error(error instanceof Error ? error.message : `No se pudo leer ${file.name}.`);
+                    }
+                  }
+
+                  if (attachmentsToAdd.length > 0) {
+                    setAdjuntos((previous) => [...previous, ...attachmentsToAdd]);
+                  }
                 }}
+              />
+              <button
+                type="button"
+                className="w-full border-2 border-dashed border-slate-300 rounded-xl p-6 text-center hover:border-blue-400 hover:bg-blue-50 transition-all"
+                onClick={() => attachmentInputRef.current?.click()}
               >
                 <Upload size={28} className="mx-auto text-slate-400 mb-2" />
-                <p className="text-sm text-slate-600 font-medium">Haga clic para adjuntar documentos</p>
-                <p className="text-xs text-slate-400 mt-1">PDF, Word, Excel — Máx. 10 MB por archivo</p>
-              </div>
+                <p className="text-sm text-slate-600 font-medium">Haga clic para seleccionar documentos</p>
+                <p className="text-xs text-slate-400 mt-1">Imágenes, PDF, Word o Excel — Máx. 10 MB por archivo y 35 MB en total</p>
+              </button>
               {adjuntos.length > 0 && (
                 <div className="mt-3 space-y-2">
                   {adjuntos.map((adj, i) => (
                     <div key={i} className="flex items-center gap-2 bg-slate-50 rounded-lg px-3 py-2 border border-slate-200">
                       <Package size={14} className="text-slate-400 shrink-0" />
-                      <span className="text-sm text-slate-700 flex-1">{adj}</span>
-                      <button onClick={() => setAdjuntos((prev) => prev.filter((_, j) => j !== i))} className="text-slate-400 hover:text-red-500">
+                      <span className="text-sm text-slate-700 flex-1">{parseActaAttachment(adj)?.name || adj}</span>
+                      <button type="button" aria-label={`Quitar ${parseActaAttachment(adj)?.name || adj}`} onClick={() => setAdjuntos((prev) => prev.filter((_, j) => j !== i))} className="text-slate-400 hover:text-red-500">
                         <X size={14} />
                       </button>
                     </div>
@@ -1928,9 +1983,36 @@ export default function ActaCreatePage() {
             )}
             {adjuntos.length > 0 && (
               <Section title="Adjuntos">
-                <ul className="text-sm text-slate-700 space-y-1">
-                  {adjuntos.map((a, i) => <li key={i} className="flex items-center gap-1.5"><Package size={12} className="text-slate-400" />{a}</li>)}
-                </ul>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  {adjuntos.map((value, i) => {
+                    const attachment = parseActaAttachment(value);
+                    if (attachment?.type.startsWith("image/")) {
+                      return (
+                        <figure key={i} className="overflow-hidden rounded-lg border border-slate-200 bg-slate-50">
+                          <img
+                            src={attachment.dataUrl}
+                            alt={attachment.name}
+                            className="max-h-64 w-full object-contain"
+                          />
+                          <figcaption className="truncate border-t border-slate-200 px-3 py-2 text-xs text-slate-600">
+                            {attachment.name}
+                          </figcaption>
+                        </figure>
+                      );
+                    }
+
+                    return (
+                      <div key={i} className="flex items-center gap-1.5 text-sm text-slate-700">
+                        <Package size={12} className="shrink-0 text-slate-400" />
+                        {attachment ? (
+                          <a href={attachment.dataUrl} download={attachment.name} className="truncate text-blue-700 underline">
+                            {attachment.name}
+                          </a>
+                        ) : value}
+                      </div>
+                    );
+                  })}
+                </div>
               </Section>
             )}
           </div>

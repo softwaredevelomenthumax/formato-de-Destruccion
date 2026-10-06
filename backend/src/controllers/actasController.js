@@ -24,10 +24,12 @@ async function createAndSendNotification(pool, recipient, { title, message, type
     actaId: actaReference || actaId,
     stage: emailStage,
   });
+  const recipientIdentifier = recipient.username || recipient.id;
   if (emailResult.sent) {
-    console.info(`Correo de notificaciÃ³n aceptado por SMTP para ${recipient.id}: ${emailResult.messageId || 'sin ID de mensaje'}`);
+    console.info(`Correo de notificación aceptado por SMTP para ${recipientIdentifier} (entrega al buzón no confirmada): ${emailResult.messageId || 'sin ID de mensaje'}`);
   } else {
-    console.error(`Correo de notificaciÃ³n no enviado para ${recipient.id}: ${emailResult.reason || 'error desconocido'}`);
+    const reason = emailResult.reason === 'no_email' ? 'el usuario no tiene un correo registrado' : emailResult.reason || 'error desconocido';
+    console.error(`Correo de notificación no enviado para ${recipientIdentifier}: ${reason}`);
   }
   return { userId: recipient.id, sent: emailResult.sent, reason: emailResult.reason };
 }
@@ -36,11 +38,12 @@ async function notifyRole(pool, role, notification) {
   const result = await pool.request()
     .input('role', role)
     .query(`SELECT id, nombre, email FROM users
-      WHERE LOWER(LTRIM(RTRIM(rol))) IN (@role, 'hse & s', 'hse_s')
+      WHERE (LOWER(LTRIM(RTRIM(rol))) = @role
+        OR (@role = 'hse' AND LOWER(LTRIM(RTRIM(rol))) IN ('hse & s', 'hse_s')))
         AND LOWER(LTRIM(RTRIM(status))) = 'activo'`);
 
   if (result.recordset.length === 0) {
-    console.error(`No se encontrÃ³ ningÃºn usuario HSE activo para notificar sobre el acta ${notification.actaReference || notification.actaId}`);
+    console.error(`No se encontró ningún usuario HSE activo para notificar sobre el acta ${notification.actaReference || notification.actaId}`);
     return [];
   }
 
@@ -57,6 +60,79 @@ function normalizeArea(value) {
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .replace(/\s+/g, " ");
+}
+
+function validateActaControlStatus(materials, actaControlStatus) {
+  if (!Array.isArray(materials) || materials.length === 0) return null;
+  if (typeof actaControlStatus !== 'boolean' || materials.some((material) => typeof material.sustanciaControlada !== 'boolean')) {
+    return 'Todos los productos deben tener definida su condición de control.';
+  }
+  if (new Set(materials.map((material) => material.sustanciaControlada)).size > 1
+    || materials.some((material) => material.sustanciaControlada !== actaControlStatus)) {
+    return 'Todos los productos de una misma acta deben tener la misma condición de control.';
+  }
+  return null;
+}
+
+function normalizeApprovalMaterialType(value) {
+  const normalized = String(value || '').trim().toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[\s_-]+/g, '');
+  const aliases = {
+    MP: 'ROH',
+    MATERIAPRIMA: 'ROH',
+    PT: 'FERT',
+    PRODUCTOTERMINADO: 'FERT',
+    ST: 'HALB',
+    SEMITERMINADO: 'HALB',
+    ME: 'VERP',
+    MATERIALEMPAQUE: 'VERP',
+  };
+  return aliases[normalized] || normalized;
+}
+
+function requiresCostApprovalByMaterialType(types) {
+  const requiredTypes = new Set(['ROH', 'VERP', 'FERT', 'HALB', 'ZMC']);
+  return types.some((type) => requiredTypes.has(normalizeApprovalMaterialType(type)));
+}
+
+const MATERIAL_APPROVAL_ORDER = ['material_planeacion', 'material_lab_calidad'];
+const MATERIAL_APPROVAL_ROLES = {
+  material_planeacion: 'planeacion',
+  material_lab_calidad: 'lab_calidad',
+};
+const MATERIAL_APPROVAL_LABELS = {
+  material_planeacion: 'Planeación financiera',
+  material_lab_calidad: 'Lab-calidad',
+};
+
+function getMaterialApprovalSteps(types) {
+  const mappedSteps = new Set(types.map((type) => {
+    const normalized = normalizeApprovalMaterialType(type);
+    if (['ZNBW', 'WERB'].includes(normalized)) return 'material_planeacion';
+    if (normalized === 'UNBW') return 'material_lab_calidad';
+    return null;
+  }).filter(Boolean));
+  return MATERIAL_APPROVAL_ORDER.filter((step) => mappedSteps.has(step));
+}
+
+async function getNextPendingMaterialApproval(pool, actaId) {
+  const result = await pool.request()
+    .input('actaId', actaId)
+    .query("SELECT paso FROM acta_aprobaciones WHERE actaId = @actaId AND status = 'pendiente'");
+  const pendingSteps = new Set(result.recordset.map((approval) => approval.paso));
+  return MATERIAL_APPROVAL_ORDER.find((step) => pendingSteps.has(step));
+}
+
+async function getExpectedApprovalStep(pool, actaId, status) {
+  if (status === 'pendiente_aprobacion_material') return getNextPendingMaterialApproval(pool, actaId);
+  return {
+    pendiente_aprobacion_area: 'area',
+    pendiente_costos: 'costos',
+    pendiente_hse: 'hse',
+  }[status];
+}
+
+function getRequiredRoleForApproval(step) {
+  return MATERIAL_APPROVAL_ROLES[step] || { area: 'aprobador_area', costos: 'costos', hse: 'hse' }[step];
 }
 
 function serializeApproval(approval) {
@@ -185,6 +261,11 @@ export async function createActa(req, res) {
       adjuntos, cecoId, invimaProductId, sapCodeId, materiales,
     } = req.body;
     const requiereCostos = false;
+    const materialItems = Array.isArray(materiales) && materiales.length > 0
+      ? materiales
+      : [{ descripcion, tipoMaterial, codigoSAP, numeroLote, ordenProduccion, sustanciaControlada, clasificacion, fechaVencimiento, registroINVIMA, estadoInvima, invimaProductId, sapCodeId }];
+    const controlStatusError = validateActaControlStatus(materialItems, sustanciaControlada);
+    if (controlStatusError) return res.status(400).json({ error: controlStatusError });
     const pool = getPool();
 
     const id = `a${Date.now()}`;
@@ -228,9 +309,6 @@ export async function createActa(req, res) {
         VALUES (@id, @consecutivo, @status, @empresa, @centroCostos, @fecha, @solicitanteId, @solicitanteNombre, @responsable, @area, @descripcion, @tipoMaterial, @codigoSAP, @numeroLote, @ordenProduccion, @sustanciaControlada, @clasificacion, @fechaVencimiento, @registroINVIMA, @estadoInvima, @pesoKg, @cantidadUnidades, @costoDestruccion, @causal, @otraCausal, @observaciones, @adjuntos, @requiereCostos, @cecoId, @invimaProductId, @sapCodeId)
       `);
 
-    const materialItems = Array.isArray(materiales) && materiales.length > 0
-      ? materiales
-      : [{ descripcion, tipoMaterial, codigoSAP, numeroLote, ordenProduccion, sustanciaControlada, clasificacion, fechaVencimiento, registroINVIMA, estadoInvima, invimaProductId, sapCodeId }];
     for (const [index, material] of materialItems.entries()) {
       await insertActaMaterial(pool, id, material, index);
     }
@@ -255,8 +333,14 @@ export async function createActa(req, res) {
       `);
 
     // Crear aprobaciones
+    const materialApprovalSteps = getMaterialApprovalSteps([
+      tipoMaterial,
+      ...materialItems.map((material) => material.tipoMaterial),
+    ]);
     const aprobaciones = [
+      ...materialApprovalSteps.map((paso) => ({ paso, status: 'pendiente' })),
       { paso: 'area', status: 'pendiente' },
+      { paso: 'costos', status: 'no_aplica' },
       { paso: 'hse', status: 'pendiente' },
     ];
 
@@ -366,6 +450,21 @@ export async function updateActa(req, res) {
     const updates = req.body;
     const pool = getPool();
 
+    if (Array.isArray(updates.materiales) && updates.materiales.length > 0) {
+      const controlStatusError = validateActaControlStatus(updates.materiales, updates.sustanciaControlada);
+      if (controlStatusError) return res.status(400).json({ error: controlStatusError });
+    } else if (Object.prototype.hasOwnProperty.call(updates, 'sustanciaControlada')) {
+      if (typeof updates.sustanciaControlada !== 'boolean') {
+        return res.status(400).json({ error: 'Seleccione la condición de control del acta.' });
+      }
+      const materialsResult = await pool.request()
+        .input('actaId', id)
+        .query('SELECT sustanciaControlada FROM acta_materiales WHERE actaId = @actaId');
+      if (materialsResult.recordset.some((material) => material.sustanciaControlada !== updates.sustanciaControlada)) {
+        return res.status(400).json({ error: 'Todos los productos de una misma acta deben tener la misma condición de control.' });
+      }
+    }
+
     const fields = [];
     const request = pool.request().input('id', id);
 
@@ -434,7 +533,7 @@ export async function deleteActa(req, res) {
     const otherEmailRecipients = new Map(involvedResult.recordset
       .filter((recipient) => !globalAdminIds.has(recipient.id))
       .map((recipient) => [recipient.email, recipient]));
-    const deletionMessage = `El usuario ${req.user.username} eliminÃ³ el acta ${acta.consecutivo}.`;
+    const deletionMessage = `El usuario ${req.user.username} eliminó el acta ${acta.consecutivo}.`;
     const globalAdminNotifications = globalAdminsResult.recordset.map((recipient) => createAndSendNotification(pool, recipient, {
       title: `Acta ${acta.consecutivo} eliminada`,
       message: deletionMessage,
@@ -450,7 +549,7 @@ export async function deleteActa(req, res) {
     }));
     const notificationResults = await Promise.allSettled([...globalAdminNotifications, ...otherRecipientEmails]);
     notificationResults.forEach((result) => {
-      if (result.status === 'rejected') console.error('No se pudo notificar la eliminaciÃ³n de un acta:', result.reason?.message || result.reason);
+      if (result.status === 'rejected') console.error('No se pudo notificar la eliminación de un acta:', result.reason?.message || result.reason);
     });
 
     res.json({ message: 'Acta eliminada' });
@@ -464,20 +563,41 @@ export async function deleteActa(req, res) {
 export async function submitActa(req, res) {
   try {
     const { id } = req.params;
-    const requiereCostos = false;
     const pool = getPool();
     const actaResult = await pool.request().input('id', id)
-      .query('SELECT id, consecutivo, solicitanteId, status, area FROM actas WHERE id = @id');
+      .query('SELECT id, consecutivo, solicitanteId, status, area, tipoMaterial FROM actas WHERE id = @id');
     const acta = actaResult.recordset[0];
     if (!acta) return res.status(404).json({ error: 'Acta no encontrada' });
-    if (['pendiente_aprobacion_area', 'pendiente_costos', 'pendiente_hse', 'aprobada'].includes(acta.status)) {
+    if (['pendiente_aprobacion_material', 'pendiente_aprobacion_area', 'pendiente_costos', 'pendiente_hse', 'aprobada'].includes(acta.status)) {
       return res.status(409).json({ error: 'El acta ya se encuentra en el flujo de aprobación' });
     }
 
+    const materialTypesResult = await pool.request()
+      .input('actaId', id)
+      .query('SELECT tipoMaterial FROM acta_materiales WHERE actaId = @actaId');
+    const materialApprovalSteps = getMaterialApprovalSteps([
+      acta.tipoMaterial,
+      ...materialTypesResult.recordset.map((material) => material.tipoMaterial),
+    ]);
+    const initialStatus = 'pendiente_aprobacion_area';
+
     await pool.request()
       .input('id', id)
-      .input('requiereCostos', Boolean(requiereCostos))
-      .query("UPDATE actas SET status = 'pendiente_aprobacion_area', requiereCostos = @requiereCostos, updatedAt = GETDATE() WHERE id = @id");
+      .input('requiereCostos', false)
+      .input('status', initialStatus)
+      .query('UPDATE actas SET status = @status, requiereCostos = @requiereCostos, updatedAt = GETDATE() WHERE id = @id');
+
+    await pool.request()
+      .input('actaId', id)
+      .query("DELETE FROM acta_aprobaciones WHERE actaId = @actaId AND paso LIKE 'material_%'");
+
+    for (const paso of materialApprovalSteps) {
+      await pool.request()
+        .input('id', `ap${Date.now()}-${Math.random().toString(36).slice(2, 8)}`)
+        .input('actaId', id)
+        .input('paso', paso)
+        .query("INSERT INTO acta_aprobaciones (id, actaId, paso, status) VALUES (@id, @actaId, @paso, 'pendiente')");
+    }
 
     await pool.request()
       .input('actaId', id)
@@ -490,9 +610,7 @@ export async function submitActa(req, res) {
       title: 'Nueva acta para aprobación del área',
       message: `El acta ${acta.consecutivo} está pendiente de revisión y aprobación por parte del aprobador del área ${acta.area}. Ingresa al sistema para revisarla.`,
       emailStage: 'Revisión del aprobador de área',
-      type: 'info',
-      actaId: id,
-      actaReference: acta.consecutivo,
+      type: 'info', actaId: id, actaReference: acta.consecutivo,
     });
 
     const requester = await getActiveUser(pool, acta.solicitanteId);
@@ -503,7 +621,7 @@ export async function submitActa(req, res) {
         type: 'success', actaId: id, actaReference: acta.consecutivo,
       });
     }
-    res.json({ message: 'Acta enviada a aprobación' });
+    res.json({ message: 'Acta enviada a aprobación', status: initialStatus });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -518,32 +636,35 @@ export async function approveActa(req, res) {
 
     const actaResult = await pool.request()
       .input('id', id)
-      .query('SELECT consecutivo, solicitanteId, status, area FROM actas WHERE id = @id');
+      .query('SELECT consecutivo, solicitanteId, status, area, tipoMaterial FROM actas WHERE id = @id');
     const acta = actaResult.recordset[0];
     if (!acta) return res.status(404).json({ error: 'Acta no encontrada' });
 
-    const expectedStepByStatus = {
-      pendiente_aprobacion_area: 'area',
-      pendiente_hse: 'hse',
-    };
-    const expectedStep = expectedStepByStatus[acta.status];
+    let requiereCostos = false;
+    if (paso === 'area') {
+      const materialTypes = await pool.request()
+        .input('actaId', id)
+        .query('SELECT tipoMaterial FROM acta_materiales WHERE actaId = @actaId');
+      requiereCostos = requiresCostApprovalByMaterialType([
+        acta.tipoMaterial,
+        ...materialTypes.recordset.map((material) => material.tipoMaterial),
+      ]);
+    }
+
+    const expectedStep = await getExpectedApprovalStep(pool, id, acta.status);
     if (!expectedStep || paso !== expectedStep) {
       return res.status(409).json({ error: 'El acta aún no ha llegado a este paso de aprobación' });
     }
-    const requiredRoleByStep = { area: 'aprobador_area', hse: 'hse' };
-    if (req.user.rol !== requiredRoleByStep[paso]) {
+    if (req.user.rol !== getRequiredRoleForApproval(paso)) {
       return res.status(403).json({ error: 'Este usuario no es el aprobador asignado para este paso' });
     }
     if (paso === 'area' && !(await userBelongsToArea(pool, req.user.id, acta.area))) {
       return res.status(403).json({ error: 'Este usuario no está asignado al área del acta' });
     }
 
-    const aprobId = `ap${Date.now()}`;
     await pool.request()
-      .input('id', aprobId)
       .input('actaId', id)
       .input('paso', paso)
-      .input('status', 'aprobado')
       .input('aprobador', aprobador)
       .input('comentario', comentario)
       .query(`
@@ -551,23 +672,73 @@ export async function approveActa(req, res) {
         WHERE actaId = @actaId AND paso = @paso
       `);
 
-    const nextStatus = paso === 'area' ? 'pendiente_hse' : 'aprobada';
+    let nextStatus;
+    const nextMaterialStep = await getNextPendingMaterialApproval(pool, id);
+    if (paso === 'area') {
+      nextStatus = requiereCostos
+        ? 'pendiente_costos'
+        : nextMaterialStep ? 'pendiente_aprobacion_material' : 'pendiente_hse';
+    } else if (paso === 'costos') {
+      nextStatus = nextMaterialStep ? 'pendiente_aprobacion_material' : 'pendiente_hse';
+    } else if (paso.startsWith('material_')) {
+      nextStatus = nextMaterialStep ? 'pendiente_aprobacion_material' : 'pendiente_hse';
+    } else {
+      nextStatus = 'aprobada';
+    }
 
-    await pool.request()
-      .input('id', id)
-      .input('status', nextStatus)
-      .query('UPDATE actas SET status = @status, updatedAt = GETDATE() WHERE id = @id');
+    if (paso === 'area') {
+      await pool.request()
+        .input('id', id)
+        .input('status', nextStatus)
+        .input('requiereCostos', requiereCostos)
+        .query('UPDATE actas SET status = @status, requiereCostos = @requiereCostos, updatedAt = GETDATE() WHERE id = @id');
 
-    const nextRole = nextStatus === 'pendiente_hse' ? 'hse' : null;
-    const nextRoleLabel = 'HSE & S';
+      const costApproval = await pool.request()
+        .input('actaId', id)
+        .query("SELECT id FROM acta_aprobaciones WHERE actaId = @actaId AND paso = 'costos'");
+      if (costApproval.recordset.length) {
+        await pool.request()
+          .input('actaId', id)
+          .input('status', requiereCostos ? 'pendiente' : 'no_aplica')
+          .query("UPDATE acta_aprobaciones SET status = @status, aprobador = NULL, comentario = NULL, motivo = NULL, ajustes = NULL WHERE actaId = @actaId AND paso = 'costos'");
+      } else {
+        await pool.request()
+          .input('id', `ap${Date.now()}-${Math.random().toString(36).slice(2, 8)}`)
+          .input('actaId', id)
+          .input('status', requiereCostos ? 'pendiente' : 'no_aplica')
+          .query("INSERT INTO acta_aprobaciones (id, actaId, paso, status) VALUES (@id, @actaId, 'costos', @status)");
+      }
+    } else {
+      await pool.request()
+        .input('id', id)
+        .input('status', nextStatus)
+        .query('UPDATE actas SET status = @status, updatedAt = GETDATE() WHERE id = @id');
+    }
+
+    const activeMaterialStep = nextStatus === 'pendiente_aprobacion_material'
+      ? await getNextPendingMaterialApproval(pool, id)
+      : null;
+    const nextRole = activeMaterialStep
+      ? MATERIAL_APPROVAL_ROLES[activeMaterialStep]
+      : nextStatus === 'pendiente_costos' ? 'costos' : nextStatus === 'pendiente_hse' ? 'hse' : null;
+    const nextRoleLabel = activeMaterialStep
+      ? MATERIAL_APPROVAL_LABELS[activeMaterialStep]
+      : nextRole === 'costos' ? 'Costos' : 'HSE & S';
 
     // El correo al siguiente aprobador sale después de persistir el cambio de estado.
     let emailNotifications = [];
-    if (nextRole) {
+    if (nextStatus === 'pendiente_aprobacion_area') {
+      emailNotifications = await notifyAreaApprovers(pool, acta.area, {
+        title: 'Nueva acta para aprobación del área',
+        message: `El acta ${acta.consecutivo} está pendiente de revisión y aprobación por parte del aprobador del área ${acta.area}. Ingresa al sistema para revisarla.`,
+        emailStage: 'Revisión del aprobador de área',
+        type: 'info', actaId: id, actaReference: acta.consecutivo,
+      }) || [];
+    } else if (nextRole) {
       emailNotifications = await notifyRole(pool, nextRole, {
-        title: 'Acta aprobada por el área: revisión HSE pendiente',
-        message: `El aprobador del área ${acta.area} aprobó el acta ${acta.consecutivo}. Ahora está pendiente de tu revisión por el equipo ${nextRoleLabel}. Ingresa al sistema para continuar el flujo de aprobación.`,
-        emailStage: 'Revisión de HSE & S',
+        title: `Acta pendiente de aprobación por ${nextRoleLabel}`,
+        message: `El acta ${acta.consecutivo} está pendiente de revisión por ${nextRoleLabel}. Ingresa al sistema para continuar el flujo de aprobación.`,
+        emailStage: `Revisión de ${nextRoleLabel}`,
         type: 'info',
         actaId: id,
         actaReference: acta.consecutivo,
@@ -579,7 +750,7 @@ export async function approveActa(req, res) {
       const areaApprover = await getAreaApproverIdentifier(pool, id);
       areaApproverNotifications = await notifyAreaApprovers(pool, acta.area, {
         title: 'Acta aprobada por HSE',
-        message: `HSE aprobÃ³ el acta ${acta.consecutivo}. El proceso de aprobaciÃ³n ha finalizado.`,
+        message: `HSE aprobó el acta ${acta.consecutivo}. El proceso de aprobación ha finalizado.`,
         emailStage: 'Acta aprobada por HSE',
         type: 'success',
         actaId: id,
@@ -589,8 +760,10 @@ export async function approveActa(req, res) {
 
     const requester = await getActiveUser(pool, acta.solicitanteId);
     if (requester) {
+      const approvalStage = MATERIAL_APPROVAL_LABELS[paso]
+        || (paso === 'area' ? 'el área' : paso === 'costos' ? 'Costos' : 'HSE');
       const statusMessage = nextRole
-        ? `fue aprobada en el área y ahora está pendiente de revisión por ${nextRoleLabel}.`
+        ? `fue aprobada por ${approvalStage} y ahora está pendiente de revisión por ${nextRoleLabel}.`
         : 'fue aprobada completamente.';
       await createAndSendNotification(pool, requester, {
         title: 'Actualización de tu acta',
@@ -601,13 +774,19 @@ export async function approveActa(req, res) {
       });
     }
 
-    res.json({ message: 'Acta aprobada', emailNotifications, areaApproverNotifications });
+    res.json({
+      message: 'Acta aprobada',
+      emailNotifications,
+      areaApproverNotifications,
+      status: nextStatus,
+      nextApproval: nextRoleLabel || (nextStatus === 'pendiente_aprobacion_area' ? 'Aprobador del área' : null),
+    });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 }
 
-// ReenvÃ­a el aviso de aprobaciÃ³n HSE para un acta que ya estÃ¡ esperando ese paso.
+// Reenvía el aviso de aprobación HSE para un acta que ya está esperando ese paso.
 export async function resendHseEmail(req, res) {
   try {
     const { id } = req.params;
@@ -618,7 +797,7 @@ export async function resendHseEmail(req, res) {
     const acta = actaResult.recordset[0];
     if (!acta) return res.status(404).json({ error: 'Acta no encontrada' });
     if (acta.status !== 'pendiente_hse') {
-      return res.status(409).json({ error: 'Solo se puede reenviar el correo cuando el acta estÃ¡ pendiente de HSE' });
+      return res.status(409).json({ error: 'Solo se puede reenviar el correo cuando el acta está pendiente de HSE' });
     }
 
     const recipientResult = await pool.request().query(`SELECT id, nombre, email FROM users
@@ -633,10 +812,10 @@ export async function resendHseEmail(req, res) {
       const email = await sendNotificationEmail({
         to: recipient.email,
         recipientName: recipient.nombre,
-        title: 'Acta pendiente de revisiÃ³n HSE',
-        message: `El acta ${acta.consecutivo} del Ã¡rea ${acta.area} estÃ¡ pendiente de aprobaciÃ³n por HSE. Ingresa al sistema para revisarla.`,
+        title: 'Acta pendiente de revisión HSE',
+        message: `El acta ${acta.consecutivo} del área ${acta.area} está pendiente de aprobación por HSE. Ingresa al sistema para revisarla.`,
         actaId: acta.consecutivo,
-        stage: 'RevisiÃ³n de HSE & S',
+        stage: 'Revisión de HSE & S',
       });
       return { userId: recipient.id, sent: email.sent, reason: email.reason };
     }));
@@ -714,12 +893,11 @@ export async function rejectActa(req, res) {
       .query('SELECT consecutivo, solicitanteId, status, area FROM actas WHERE id = @id');
     const acta = actaResult.recordset[0];
     if (!acta) return res.status(404).json({ error: 'Acta no encontrada' });
-    const expectedStepByStatus = { pendiente_aprobacion_area: 'area', pendiente_hse: 'hse' };
-    if (expectedStepByStatus[acta.status] !== paso) {
+    const expectedStep = await getExpectedApprovalStep(pool, id, acta.status);
+    if (expectedStep !== paso) {
       return res.status(409).json({ error: 'El acta aún no ha llegado a este paso de aprobación' });
     }
-    const requiredRoleByStep = { area: 'aprobador_area', hse: 'hse' };
-    if (req.user.rol !== requiredRoleByStep[paso]) {
+    if (req.user.rol !== getRequiredRoleForApproval(paso)) {
       return res.status(403).json({ error: 'Este usuario no es el aprobador asignado para este paso' });
     }
     if (paso === 'area' && !(await userBelongsToArea(pool, req.user.id, acta.area))) {
@@ -778,12 +956,11 @@ export async function returnActa(req, res) {
       .query('SELECT consecutivo, solicitanteId, status, area FROM actas WHERE id = @id');
     const acta = actaResult.recordset[0];
     if (!acta) return res.status(404).json({ error: 'Acta no encontrada' });
-    const expectedStepByStatus = { pendiente_aprobacion_area: 'area', pendiente_hse: 'hse' };
-    if (expectedStepByStatus[acta.status] !== paso) {
+    const expectedStep = await getExpectedApprovalStep(pool, id, acta.status);
+    if (expectedStep !== paso) {
       return res.status(409).json({ error: 'El acta aún no ha llegado a este paso de aprobación' });
     }
-    const requiredRoleByStep = { area: 'aprobador_area', hse: 'hse' };
-    if (req.user.rol !== requiredRoleByStep[paso]) {
+    if (req.user.rol !== getRequiredRoleForApproval(paso)) {
       return res.status(403).json({ error: 'Este usuario no es el aprobador asignado para este paso' });
     }
     if (paso === 'area' && !(await userBelongsToArea(pool, req.user.id, acta.area))) {
