@@ -25,6 +25,15 @@ export function Badge({ label, variant = "default", size = "sm" }: BadgeProps) {
 }
 
 export function ActaStatusBadge({ status }: { status: ActaStatus }) {
+  if (!Object.prototype.hasOwnProperty.call(ACTA_STATUS_COLORS, status)) {
+    console.error("Estado de acta no reconocido:", status);
+    return (
+      <span className="inline-flex items-center px-2 py-0.5 text-xs font-medium rounded-full border bg-slate-100 text-slate-600 border-slate-200">
+        Estado desconocido: {String(status ?? "sin estado")}
+      </span>
+    );
+  }
+
   const colors = ACTA_STATUS_COLORS[status];
   const label = ACTA_STATUS_LABELS[status];
   return (
