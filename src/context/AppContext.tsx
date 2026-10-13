@@ -40,9 +40,9 @@ interface AppContextType {
   updateActa: (id: string, updates: Partial<Acta>, histEntry?: Omit<ActaHistorial, "id">) => Promise<void>;
   deleteActa: (id: string) => Promise<boolean>;
   sendActa: (id: string, userId: string, userName: string) => Promise<void>;
-    approveActa: (actaId: string, paso: ActaAprobacion["paso"], aprobador: string, comentario: string, requiereCostos?: boolean) => Promise<{ emailNotifications?: Array<{ sent: boolean; reason?: string }>; nextApproval?: string }>;
-  rejectActa: (actaId: string, paso: ActaAprobacion["paso"], aprobador: string, motivo: string) => Promise<void>;
-  returnActa: (actaId: string, paso: ActaAprobacion["paso"], aprobador: string, ajustes: ActaAprobacion["ajustes"]) => Promise<void>;
+    approveActa: (actaId: string, paso: ActaAprobacion["paso"], aprobador: string, comentario: string, requiereCostos?: boolean) => Promise<{ emailNotifications?: Array<{ sent: boolean; reason?: string }>; nextApproval?: string; acta: Acta }>;
+  rejectActa: (actaId: string, paso: ActaAprobacion["paso"], aprobador: string, motivo: string) => Promise<Acta>;
+  returnActa: (actaId: string, paso: ActaAprobacion["paso"], aprobador: string, ajustes: ActaAprobacion["ajustes"]) => Promise<Acta>;
 
   // Notifications
   markNotificationRead: (id: string) => Promise<void>;
@@ -260,7 +260,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const updatedActa = await api.getActa(actaId) as Acta;
       setActas((current) => asArray<Acta>(current).map((a) => a.id === actaId ? updatedActa : a));
 
-      return approvalResult;
+      return { ...approvalResult, acta: updatedActa };
 
       // El backend crea y envía estas notificaciones para que el correo no
       // dependa de que el navegador de quien aprobó siga abierto.
@@ -273,12 +273,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const rejectActa = async (actaId: string, paso: ActaAprobacion["paso"], aprobador: string, motivo: string) => {
     try {
       const acta = actas.find((a) => a.id === actaId);
-      if (!acta) return;
+      if (!acta) throw new Error("No se encontró el acta para rechazar");
 
       await api.rejectActa(actaId, { paso, aprobador, motivo });
 
       const updatedActa = await api.getActa(actaId) as Acta;
       setActas((current) => asArray<Acta>(current).map((a) => a.id === actaId ? updatedActa : a));
+      return updatedActa;
 
     } catch (error) {
       console.error("Error rechazando acta:", error);
@@ -289,12 +290,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const returnActa = async (actaId: string, paso: ActaAprobacion["paso"], aprobador: string, ajustes: ActaAprobacion["ajustes"]) => {
     try {
       const acta = actas.find((a) => a.id === actaId);
-      if (!acta) return;
+      if (!acta) throw new Error("No se encontró el acta para devolver");
 
       await api.returnActa(actaId, { paso, aprobador, ajustes });
 
       const updatedActa = await api.getActa(actaId) as Acta;
       setActas((current) => asArray<Acta>(current).map((a) => a.id === actaId ? updatedActa : a));
+      return updatedActa;
 
     } catch (error) {
       console.error("Error devolviendo acta:", error);

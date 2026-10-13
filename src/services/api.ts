@@ -65,6 +65,7 @@ export const api: Record<string, (...args: any[]) => Promise<any>> = {
 	}),
 	deleteActa: (id) => fetchJson(`${API_BASE_URL}/actas/${id}`, { method: "DELETE", headers: getHeaders() }),
 	submitActa: (id, data) => fetchJson(`${API_BASE_URL}/actas/${id}/submit`, { method: "POST", headers: getHeaders(), body: JSON.stringify(data) }),
+	updateValidationWeight: (id, data) => fetchJson(`${API_BASE_URL}/actas/${id}/validation-weight`, { method: "PATCH", headers: getHeaders(), body: JSON.stringify(data) }),
 	approveActa: (id, data) => fetchJson(`${API_BASE_URL}/actas/${id}/approve`, { method: "POST", headers: getHeaders(), body: JSON.stringify(data) }),
 	notifyHse: (id) => fetchJson(`${API_BASE_URL}/actas/${id}/notify-hse`, { method: "POST", headers: getHeaders() }),
 	notifyAreaApprover: (id) => fetchJson(`${API_BASE_URL}/actas/${id}/notify-area-approver`, { method: "POST", headers: getHeaders() }),

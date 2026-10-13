@@ -18,7 +18,7 @@ export default function AprobacionesPage() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    if (!user || !["hse", "costos", "planeacion", "lab_calidad"].includes(user.rol)) return;
+    if (!user || !["hse", "costos", "validaciones", "planeacion", "lab_calidad"].includes(user.rol)) return;
 
     void refreshActas();
     const refreshInterval = window.setInterval(() => void refreshActas(), 30000);
@@ -42,6 +42,7 @@ export default function AprobacionesPage() {
     aprobador_area: "pendiente_aprobacion_area",
     costos: "pendiente_costos",
     hse: "pendiente_hse",
+    validaciones: "pendiente_validaciones",
   };
 
   const targetStatus = statusMap[user.rol];

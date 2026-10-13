@@ -101,6 +101,7 @@ export default function SearchPage() {
               <option value="borrador">Borrador</option>
               <option value="pendiente_aprobacion_area">Pendiente área</option>
               <option value="pendiente_aprobacion_material">Pendiente aprobación por material</option>
+              <option value="pendiente_validaciones">Pendiente de Validaciones</option>
               <option value="aprobada">Aprobada</option>
               <option value="rechazada">Rechazada</option>
               <option value="devuelta_ajustes">Devuelta</option>

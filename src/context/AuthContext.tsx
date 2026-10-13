@@ -2,7 +2,7 @@ import { createContext, useContext, useState, useEffect, useCallback, useRef, ty
 import type { Role, User } from "../types";
 import { api } from "../services/api.ts";
 
-const VALID_ROLES: Role[] = ["administrador", "admin_global", "solicitante", "aprobador_area", "costos", "hse", "planeacion", "lab_calidad"];
+const VALID_ROLES: Role[] = ["administrador", "admin_global", "solicitante", "aprobador_area", "costos", "hse", "validaciones", "planeacion", "lab_calidad"];
 
 function normalizeRole(value: unknown): Role | null {
   if (typeof value !== "string") return null;

@@ -13,6 +13,7 @@ export const ROLE_LABELS: Record<Role, string> = {
   aprobador_area: "Aprobador de Área",
   costos: "Costos",
   hse: "HSE & S",
+  validaciones: "Validaciones",
   planeacion: "Planeación",
   lab_calidad: "Lab-calidad",
 };
@@ -25,6 +26,7 @@ export const ACTA_STATUS_LABELS: Record<ActaStatus, string> = {
   pendiente_aprobacion_area: "Pendiente Aprobación Área",
   pendiente_costos: "Pendiente Costos",
   pendiente_hse: "Pendiente HSE",
+  pendiente_validaciones: "Pendiente de Validaciones",
   devuelta_ajustes: "Devuelta para Ajustes",
   rechazada: "Rechazada",
   aprobada: "Aprobada",
@@ -69,6 +71,11 @@ export const ACTA_STATUS_COLORS: Record<
     bg: "bg-purple-50",
     text: "text-purple-700",
     border: "border-purple-200",
+  },
+  pendiente_validaciones: {
+    bg: "bg-teal-50",
+    text: "text-teal-700",
+    border: "border-teal-200",
   },
   devuelta_ajustes: {
     bg: "bg-yellow-50",
@@ -199,6 +206,7 @@ export const CAUSAL_DEVOLUCION_OPTIONS = [
   "Error en la clasificación",
   "Error en la causal de destrucción",
   "Error en la identificación del producto",
+  "Error en el material enviado",
   "Documentación de soporte faltante",
   "Error en el centro de costos",
   "Error en el costo",

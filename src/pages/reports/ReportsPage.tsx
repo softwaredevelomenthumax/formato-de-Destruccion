@@ -123,6 +123,7 @@ export default function ReportsPage() {
               <option value="pendiente_aprobacion_material">Pendiente aprobación por material</option>
               <option value="pendiente_costos">Pendiente Costos</option>
               <option value="pendiente_hse">Pendiente HSE</option>
+              <option value="pendiente_validaciones">Pendiente de Validaciones</option>
             </select>
           </div>
         </div>

@@ -60,7 +60,7 @@ export default function DashboardPage() {
 
     const monthlyData = buildMonthlyData(actas);
     const recentActas = [...actas].sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()).slice(0, 5);
-    const inProcess = actas.filter((a) => ["pendiente_aprobacion_material", "pendiente_aprobacion_area", "pendiente_costos", "pendiente_hse"].includes(a.status)).length;
+    const inProcess = actas.filter((a) => ["pendiente_aprobacion_material", "pendiente_aprobacion_area", "pendiente_costos", "pendiente_hse", "pendiente_validaciones"].includes(a.status)).length;
     const returnedActas = actas.filter((a) => a.status === "devuelta_ajustes").length;
     const materialTypeCounts = new Map<string, number>();
     actas.forEach((acta) => {
@@ -94,7 +94,7 @@ export default function DashboardPage() {
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <StatCard label="Solicitudes Pendientes" value={pendingSol} icon={<Users size={20} />} iconColor="bg-amber-50 text-amber-600"
             onClick={() => navigate("/usuarios")} delta={pendingSol > 0 ? `${pendingSol} por aprobar` : undefined} />
-          <StatCard label="Actas en Proceso" value={actas.filter((a) => ["pendiente_aprobacion_material", "pendiente_aprobacion_area", "pendiente_costos", "pendiente_hse"].includes(a.status)).length}
+          <StatCard label="Actas en Proceso" value={actas.filter((a) => ["pendiente_aprobacion_material", "pendiente_aprobacion_area", "pendiente_costos", "pendiente_hse", "pendiente_validaciones"].includes(a.status)).length}
             icon={<Clock size={20} />} iconColor="bg-blue-50 text-blue-700" onClick={() => navigate("/actas")} />
           <StatCard label="Actas Aprobadas" value={actas.filter((a) => a.status === "aprobada").length}
             icon={<CheckCircle size={20} />} iconColor="bg-green-50 text-green-700" onClick={() => navigate("/actas")} />
@@ -182,7 +182,7 @@ export default function DashboardPage() {
   // Solicitante dashboard
   if (user.rol === "solicitante") {
     const borradores = myActas.filter((a) => a.status === "borrador").length;
-    const pendientes = myActas.filter((a) => ["pendiente_aprobacion_area", "pendiente_hse", "enviada"].includes(a.status)).length;
+    const pendientes = myActas.filter((a) => ["pendiente_aprobacion_area", "pendiente_hse", "pendiente_validaciones", "enviada"].includes(a.status)).length;
     const rechazadas = myActas.filter((a) => a.status === "rechazada").length;
     const aprobadas = myActas.filter((a) => a.status === "aprobada").length;
     const devueltas = myActas.filter((a) => a.status === "devuelta_ajustes").length;

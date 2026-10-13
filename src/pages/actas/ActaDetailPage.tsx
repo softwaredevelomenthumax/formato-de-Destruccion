@@ -15,21 +15,25 @@ import { MATERIAL_TYPE_OPTIONS, normalizeMaterialType } from "../../constants/ma
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
 import { toast } from "sonner";
-import type { AjusteField } from "../../types";
+import type { Acta, AjusteField } from "../../types";
 import { api } from "../../services/api";
 import { normalizeActaAttachments, parseActaAttachment } from "../../utils/actaAttachments";
 
 export default function ActaDetailPage() {
   const { id } = useParams();
   const { user } = useAuth();
-  const { actas, approveActa, rejectActa, returnActa, sendActa } = useApp();
+  const { actas, approveActa, rejectActa, returnActa, sendActa, refreshActas } = useApp();
   const navigate = useNavigate();
+  const [loadedActa, setLoadedActa] = useState<Acta | null>(null);
+  const [isLoadingActa, setIsLoadingActa] = useState(true);
 
   const [showApprove, setShowApprove] = useState(false);
   const [isApproving, setIsApproving] = useState(false);
   const [requiresCostApproval, setRequiresCostApproval] = useState(false);
   const [isResendingHse, setIsResendingHse] = useState(false);
   const [isResendingAreaApprover, setIsResendingAreaApprover] = useState(false);
+  const [validationWeight, setValidationWeight] = useState("");
+  const [isSavingValidationWeight, setIsSavingValidationWeight] = useState(false);
   const [showReject, setShowReject] = useState(false);
   const [showReturn, setShowReturn] = useState(false);
   const [approveComment, setApproveComment] = useState("");
@@ -38,7 +42,36 @@ export default function ActaDetailPage() {
   const [materialPage, setMaterialPage] = useState(0);
   const [ajustes, setAjustes] = useState<AjusteField[]>([{ campo: "", correccion: "", comentario: "" }]);
 
-  const acta = actas.find((a) => a.id === id);
+  const actaSummary = actas.find((a) => a.id === id);
+
+  useEffect(() => {
+    let isCurrent = true;
+    setLoadedActa(null);
+    setIsLoadingActa(true);
+    if (!id) {
+      setIsLoadingActa(false);
+      return;
+    }
+
+    api.getActa(id)
+      .then((data: Acta) => {
+        if (isCurrent) setLoadedActa(data);
+      })
+      .catch((error) => {
+        if (isCurrent) {
+          toast.error(error instanceof Error ? error.message : "No se pudo cargar el detalle del acta.");
+        }
+      })
+      .finally(() => {
+        if (isCurrent) setIsLoadingActa(false);
+      });
+
+    return () => {
+      isCurrent = false;
+    };
+  }, [id]);
+
+  const acta = loadedActa?.id === id ? loadedActa : actaSummary;
   const materialList = acta?.materiales?.length ? acta.materiales : acta ? [{
     descripcion: acta.descripcion,
     codigoSAP: acta.codigoSAP,
@@ -54,10 +87,17 @@ export default function ActaDetailPage() {
     costoUnitario: acta.costoDestruccion,
     costoTotal: acta.costoDestruccion,
   }] : [];
+  const currentMaterial = materialList[materialPage] ?? materialList[0];
 
   useEffect(() => {
     setMaterialPage((previous) => Math.min(previous, Math.max(materialList.length - 1, 0)));
   }, [materialList.length]);
+
+  useEffect(() => {
+    setValidationWeight(currentMaterial?.pesoKg == null ? "" : String(currentMaterial.pesoKg));
+  }, [acta?.id, currentMaterial?.id, currentMaterial?.pesoKg, materialPage]);
+
+  if (!acta && isLoadingActa) return <div className="py-20 text-center text-sm text-slate-500">Cargando acta…</div>;
 
   if (!acta) return (
     <div className="text-center py-20">
@@ -105,6 +145,7 @@ export default function ActaDetailPage() {
     if (user.rol === "aprobador_area") return "area" as const;
     if (user.rol === "costos" && acta.status === "pendiente_costos") return "costos" as const;
     if (user.rol === "hse" && acta.status === "pendiente_hse") return "hse" as const;
+    if (user.rol === "validaciones" && acta.status === "pendiente_validaciones") return "validaciones" as const;
     return null;
   };
 
@@ -113,6 +154,12 @@ export default function ActaDetailPage() {
     ? "pendiente_aprobacion_material"
     : paso === "area" ? "pendiente_aprobacion_area" : paso ? `pendiente_${paso}` : undefined;
   const canApprove = Boolean(paso && acta.status === approvalStatus && acta.solicitanteId !== user.id && (paso !== "area" || normalizeArea(user.area) === normalizeArea(acta.area)));
+  const canEditValidationWeight = user.rol === "validaciones" && acta.status === "pendiente_validaciones";
+  const isValidationWeightDirty = currentMaterial
+    ? validationWeight.trim() === ""
+      ? currentMaterial.pesoKg != null
+      : Number(validationWeight) !== Number(currentMaterial.pesoKg ?? 0)
+    : false;
   const costApprovalTypes = new Set(["ROH", "VERP", "FERT", "HALB"]);
   const requiresCostsByMaterialType = materialList.some((material) => costApprovalTypes.has(normalizeMaterialType(material.tipoMaterial)));
   const canEdit = user.rol === "solicitante" && acta.solicitanteId === user.id && (acta.status === "borrador" || acta.status === "devuelta_ajustes");
@@ -158,7 +205,6 @@ export default function ActaDetailPage() {
     }
   };
 
-  const currentMaterial = materialList[materialPage] ?? materialList[0];
   const currentMaterialType = MATERIAL_TYPE_OPTIONS.find((option) => option.value === normalizeMaterialType(currentMaterial?.tipoMaterial));
   const currentMaterialTypeValue = currentMaterial?.tipoMaterial
     ? [currentMaterial.tipoMaterial, currentMaterialType?.label.split(" = ")[1]].filter(Boolean).join(" · ")
@@ -166,9 +212,14 @@ export default function ActaDetailPage() {
 
   const handleApprove = async () => {
     if (!paso || isApproving) return;
+    if (paso === "validaciones" && isValidationWeightDirty) {
+      toast.error("Guarde primero el cambio de peso del material.");
+      return;
+    }
     setIsApproving(true);
     try {
       const result = await approveActa(acta.id, paso, user.username, approveComment, paso === "area" ? requiresCostsByMaterialType : undefined);
+      setLoadedActa(result.acta);
       const failedDeliveries = result.emailNotifications?.filter((delivery) => !delivery.sent) ?? [];
       const nextApprovalRole = result.nextApproval || (paso === "area" ? (requiresCostsByMaterialType ? "Costos" : "HSE") : paso === "costos" ? "HSE" : null);
       if (nextApprovalRole && failedDeliveries.length > 0) {
@@ -185,7 +236,9 @@ export default function ActaDetailPage() {
       } else if (nextApprovalRole && !result.emailNotifications?.length) {
         toast.warning(`Acta aprobada, pero no se encontraron usuarios ${nextApprovalRole} activos para enviar el correo.`);
       } else {
-        toast.success(nextApprovalRole ? `Acta aprobada y correo enviado a ${nextApprovalRole}` : "Acta aprobada exitosamente");
+        toast.success(nextApprovalRole
+          ? `Acta aprobada y correo enviado a ${nextApprovalRole}`
+          : paso === "validaciones" ? "Acta finalizada y aprobada" : "Acta aprobada exitosamente");
       }
       setShowApprove(false);
       setApproveComment("");
@@ -196,26 +249,66 @@ export default function ActaDetailPage() {
     }
   };
 
+  const handleSaveValidationWeight = async () => {
+    if (!validationWeight.trim()) {
+      toast.error("Ingrese el peso del material.");
+      return;
+    }
+    const parsedWeight = Number(validationWeight);
+    if (!Number.isFinite(parsedWeight) || parsedWeight < 0) {
+      toast.error("Ingrese un peso válido mayor o igual a cero.");
+      return;
+    }
+    setIsSavingValidationWeight(true);
+    try {
+      await api.updateValidationWeight(acta.id, {
+        ...(currentMaterial?.id ? { materialId: currentMaterial.id } : {}),
+        pesoKg: parsedWeight,
+      });
+      const updatedActa = await api.getActa(acta.id) as Acta;
+      setLoadedActa(updatedActa);
+      await refreshActas();
+      toast.success("Peso actualizado y total del acta recalculado.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "No se pudo actualizar el peso.");
+    } finally {
+      setIsSavingValidationWeight(false);
+    }
+  };
+
   const handleReject = async () => {
     if (!paso || !rejectReason.trim()) { toast.error("El motivo de rechazo es obligatorio"); return; }
-    await rejectActa(acta.id, paso, user.username, rejectReason);
-    toast.success("Acta rechazada");
-    setShowReject(false);
-    setRejectReason("");
+    try {
+      setLoadedActa(await rejectActa(acta.id, paso, user.username, rejectReason));
+      toast.success("Acta rechazada");
+      setShowReject(false);
+      setRejectReason("");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "No se pudo rechazar el acta.");
+    }
   };
 
   const handleReturn = async () => {
     if (!paso) return;
     const validAjustes = ajustes.filter((a) => a.campo && a.correccion);
     if (validAjustes.length === 0) { toast.error("Debe indicar al menos un ajuste requerido"); return; }
-    await returnActa(acta.id, paso, user.username, validAjustes);
-    toast.success("Acta devuelta para correcciones");
-    setShowReturn(false);
+    try {
+      setLoadedActa(await returnActa(acta.id, paso, user.username, validAjustes));
+      toast.success("Acta devuelta para correcciones");
+      setShowReturn(false);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "No se pudo devolver el acta.");
+    }
   };
 
-  const handleSend = () => {
-    sendActa(acta.id, user.id, user.nombre);
-    toast.success("Acta enviada a aprobación");
+  const handleSend = async () => {
+    try {
+      await sendActa(acta.id, user.id, user.nombre);
+      setLoadedActa(await api.getActa(acta.id) as Acta);
+      toast.success("Acta enviada a aprobación");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "No se pudo enviar el acta a aprobación.");
+    }
   };
 
   const addAjuste = () => setAjustes((prev) => [...prev, { campo: "", correccion: "", comentario: "" }]);
@@ -266,13 +359,15 @@ export default function ActaDetailPage() {
           {canApprove && (
             <div className="flex gap-2">
               <button onClick={() => setShowReturn(true)} className="flex items-center gap-2 px-3 py-2 text-sm font-medium border border-amber-300 text-amber-700 rounded-lg hover:bg-amber-50">
-                <RotateCcw size={14} /> Enviar a correcciones
+                <RotateCcw size={14} /> {paso === "validaciones" ? "Devolver por error de material" : "Enviar a correcciones"}
               </button>
-              <button onClick={() => setShowReject(true)} className="flex items-center gap-2 px-3 py-2 text-sm font-medium bg-red-600 text-white rounded-lg hover:bg-red-700">
-                <XCircle size={14} /> Rechazar
-              </button>
+              {paso !== "validaciones" && (
+                <button onClick={() => setShowReject(true)} className="flex items-center gap-2 px-3 py-2 text-sm font-medium bg-red-600 text-white rounded-lg hover:bg-red-700">
+                  <XCircle size={14} /> Rechazar
+                </button>
+              )}
               <button onClick={() => setShowApprove(true)} className="flex items-center gap-2 px-4 py-2 text-sm font-medium bg-green-600 text-white rounded-lg hover:bg-green-700">
-                <CheckCircle2 size={14} /> Aceptar
+                <CheckCircle2 size={14} /> {paso === "validaciones" ? "Finalizar acta" : "Aceptar"}
               </button>
             </div>
           )}
@@ -329,13 +424,37 @@ export default function ActaDetailPage() {
                   <Row label="Clasificación" value={CLASIFICACION_LABELS[currentMaterial.clasificacion]} />
                   {currentMaterial.fechaVencimiento && <Row label="Fecha de vencimiento" value={formatFechaVencimiento(currentMaterial.fechaVencimiento)} />}
                   <Row label="Sustancia Controlada" value={currentMaterial.sustanciaControlada ? "Sí" : "No"} />
-                  <Row label="Peso (kg)" value={currentMaterial.pesoKg == null ? "No especificado" : `${currentMaterial.pesoKg} kg`} />
+                  {canEditValidationWeight ? (
+                    <div>
+                      <label htmlFor="validation-weight" className="text-xs text-slate-500 font-medium">Peso (kg)</label>
+                      <input
+                        id="validation-weight"
+                        type="number"
+                        min="0"
+                        step="any"
+                        value={validationWeight}
+                        onChange={(event) => setValidationWeight(event.target.value)}
+                        className="mt-0.5 w-full rounded-md border border-teal-300 px-2 py-1.5 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-500"
+                      />
+                    </div>
+                  ) : (
+                    <Row label="Peso (kg)" value={currentMaterial.pesoKg == null ? "No especificado" : `${currentMaterial.pesoKg} kg`} />
+                  )}
                   <Row label="Unidades" value={currentMaterial.cantidadUnidades == null ? "No especificado" : String(currentMaterial.cantidadUnidades)} />
                   {priceEligibleTypes.has(String(currentMaterial.tipoMaterial || "").trim().toUpperCase()) && <>
                     <Row label="Precio del material a destruir" value={currentMaterial.costoUnitario == null ? "No especificado" : `COP ${Number(currentMaterial.costoUnitario).toLocaleString("es-CO")}`} />
                     <Row label="Total del material" value={currentMaterial.costoTotal == null ? "No especificado" : `COP ${Number(currentMaterial.costoTotal).toLocaleString("es-CO")}`} />
                   </>}
                 </Grid2>
+                {canEditValidationWeight && (
+                  <button
+                    onClick={handleSaveValidationWeight}
+                    disabled={isSavingValidationWeight}
+                    className="mt-3 rounded-lg bg-teal-700 px-3 py-2 text-sm font-medium text-white hover:bg-teal-800 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {isSavingValidationWeight ? "Guardando peso..." : "Guardar peso"}
+                  </button>
+                )}
               </div>
             </div>
           </InfoCard>
@@ -431,22 +550,25 @@ export default function ActaDetailPage() {
       </div>
 
       {/* Approve modal */}
-      <Modal open={showApprove} onClose={() => setShowApprove(false)} title="Aprobar Acta" size="sm"
+      <Modal open={showApprove} onClose={() => setShowApprove(false)} title={paso === "validaciones" ? "Finalizar Validación" : "Aprobar Acta"} size="sm"
         footer={
           <>
             <button onClick={() => setShowApprove(false)} className="px-4 py-2 text-sm text-slate-600 hover:text-slate-900 font-medium rounded-lg hover:bg-slate-100">Cancelar</button>
-            <button onClick={handleApprove} disabled={isApproving} className="px-5 py-2 text-sm font-semibold bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-60">{isApproving ? "Aprobando..." : "Aprobar"}</button>
+            <button onClick={handleApprove} disabled={isApproving || (paso === "validaciones" && isValidationWeightDirty)} className="px-5 py-2 text-sm font-semibold bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-60">{isApproving ? "Procesando..." : paso === "validaciones" ? "Finalizar acta" : "Aprobar"}</button>
           </>
         }
       >
         <div className="space-y-3">
-          <p className="text-sm text-slate-600">¿Confirma la aprobación del acta <strong>{acta.consecutivo}</strong>?</p>
+          <p className="text-sm text-slate-600">{paso === "validaciones" ? <>¿Confirma la finalización del acta <strong>{acta.consecutivo}</strong>?</> : <>¿Confirma la aprobación del acta <strong>{acta.consecutivo}</strong>?</>}</p>
           {paso === "area" && (
             <p className={`rounded-lg border p-3 text-sm ${requiresCostsByMaterialType ? "border-orange-200 bg-orange-50 text-orange-800" : "border-slate-200 bg-slate-50 text-slate-600"}`}>
               {requiresCostsByMaterialType
                 ? "Por el tipo de material, el acta debe pasar por aprobación de Costos."
                 : "Por el tipo de material, el acta continuará directamente a HSE."}
             </p>
+          )}
+          {paso === "validaciones" && isValidationWeightDirty && (
+            <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">Guarde el cambio de peso antes de finalizar el acta.</p>
           )}
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">Comentario (opcional)</label>
@@ -487,7 +609,11 @@ export default function ActaDetailPage() {
         }
       >
         <div className="space-y-4">
-          <p className="text-sm text-slate-600">Especifique los campos que requieren corrección. El solicitante recibirá esta información.</p>
+          <p className="text-sm text-slate-600">
+            {paso === "validaciones"
+              ? "Indique cuál material está incorrecto y qué debe corregir el solicitante. El acta volverá al inicio del flujo."
+              : "Especifique los campos que requieren corrección. El solicitante recibirá esta información."}
+          </p>
           {ajustes.map((ajuste, i) => (
             <div key={i} className="border border-slate-200 rounded-lg p-3 space-y-2">
               <div className="flex items-center justify-between">

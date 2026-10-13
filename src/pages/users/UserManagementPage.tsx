@@ -289,7 +289,7 @@ export default function UserManagementPage() {
             </div>
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">Usuario *</label>
-              <input value={form.username} onChange={(e) => setForm((p) => ({ ...p, username: e.target.value }))} disabled={!!editUser} className="w-full px-3 py-2 text-sm border border-blue-200 rounded-lg bg-blue-50 text-blue-800 font-medium cursor-not-allowed pointer-events-none focus:outline-none" />
+              <input value={form.username} onChange={(e) => setForm((p) => ({ ...p, username: e.target.value }))} disabled={!!editUser} className={`w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${editUser ? "border-blue-200 bg-blue-50 text-blue-800 font-medium cursor-not-allowed" : "border-slate-300"}`} />
             </div>
             {!editUser && (
               <div>

@@ -43,7 +43,7 @@ async function notifyRole(pool, role, notification) {
         AND LOWER(LTRIM(RTRIM(status))) = 'activo'`);
 
   if (result.recordset.length === 0) {
-    console.error(`No se encontró ningún usuario HSE activo para notificar sobre el acta ${notification.actaReference || notification.actaId}`);
+    console.error(`No se encontró ningún usuario activo con rol ${role} para notificar sobre el acta ${notification.actaReference || notification.actaId}`);
     return [];
   }
 
@@ -72,6 +72,62 @@ function validateActaControlStatus(materials, actaControlStatus) {
     return 'Todos los productos de una misma acta deben tener la misma condición de control.';
   }
   return null;
+}
+
+async function repairPendingValidationForHseApprovedActas(pool, actaId = null) {
+  await pool.request()
+    .input('actaId', sql.NVarChar(50), actaId)
+    .query(`
+      INSERT INTO acta_aprobaciones (id, actaId, paso, status)
+      SELECT 'apv-' + REPLACE(CONVERT(NVARCHAR(36), NEWID()), '-', ''), actas.id, 'validaciones', 'pendiente'
+      FROM actas
+      WHERE LOWER(LTRIM(RTRIM(actas.status))) IN ('aprobada', 'pendiente_validaciones')
+        AND (@actaId IS NULL OR actas.id = @actaId)
+        AND (LOWER(LTRIM(RTRIM(actas.status))) = 'pendiente_validaciones' OR EXISTS (
+          SELECT 1 FROM acta_aprobaciones hse
+          WHERE hse.actaId = actas.id
+            AND LOWER(LTRIM(RTRIM(hse.paso))) = 'hse'
+            AND LOWER(LTRIM(RTRIM(hse.status))) = 'aprobado'
+        ))
+        AND NOT EXISTS (
+          SELECT 1 FROM acta_aprobaciones validaciones
+          WHERE validaciones.actaId = actas.id
+            AND LOWER(LTRIM(RTRIM(validaciones.paso))) = 'validaciones'
+        );
+
+      UPDATE acta_aprobaciones
+      SET status = 'pendiente', aprobador = NULL, comentario = NULL, motivo = NULL, ajustes = NULL
+      WHERE LOWER(LTRIM(RTRIM(paso))) = 'validaciones'
+        AND LOWER(LTRIM(RTRIM(status))) = 'no_aplica'
+        AND (@actaId IS NULL OR actaId = @actaId)
+        AND actaId IN (
+          SELECT actas.id FROM actas
+          WHERE LOWER(LTRIM(RTRIM(actas.status))) IN ('aprobada', 'pendiente_validaciones')
+            AND (LOWER(LTRIM(RTRIM(actas.status))) = 'pendiente_validaciones' OR EXISTS (
+              SELECT 1 FROM acta_aprobaciones hse
+              WHERE hse.actaId = actas.id
+                AND LOWER(LTRIM(RTRIM(hse.paso))) = 'hse'
+                AND LOWER(LTRIM(RTRIM(hse.status))) = 'aprobado'
+            ))
+        );
+
+      UPDATE actas
+      SET status = 'pendiente_validaciones', updatedAt = GETDATE()
+      WHERE LOWER(LTRIM(RTRIM(status))) = 'aprobada'
+        AND (@actaId IS NULL OR id = @actaId)
+        AND EXISTS (
+          SELECT 1 FROM acta_aprobaciones hse
+          WHERE hse.actaId = actas.id
+            AND LOWER(LTRIM(RTRIM(hse.paso))) = 'hse'
+            AND LOWER(LTRIM(RTRIM(hse.status))) = 'aprobado'
+        )
+        AND EXISTS (
+          SELECT 1 FROM acta_aprobaciones validaciones
+          WHERE validaciones.actaId = actas.id
+            AND LOWER(LTRIM(RTRIM(validaciones.paso))) = 'validaciones'
+            AND LOWER(LTRIM(RTRIM(validaciones.status))) = 'pendiente'
+        );
+    `);
 }
 
 function normalizeApprovalMaterialType(value) {
@@ -128,11 +184,12 @@ async function getExpectedApprovalStep(pool, actaId, status) {
     pendiente_aprobacion_area: 'area',
     pendiente_costos: 'costos',
     pendiente_hse: 'hse',
+    pendiente_validaciones: 'validaciones',
   }[status];
 }
 
 function getRequiredRoleForApproval(step) {
-  return MATERIAL_APPROVAL_ROLES[step] || { area: 'aprobador_area', costos: 'costos', hse: 'hse' }[step];
+  return MATERIAL_APPROVAL_ROLES[step] || { area: 'aprobador_area', costos: 'costos', hse: 'hse', validaciones: 'validaciones' }[step];
 }
 
 function serializeApproval(approval) {
@@ -342,6 +399,7 @@ export async function createActa(req, res) {
       { paso: 'area', status: 'pendiente' },
       { paso: 'costos', status: 'no_aplica' },
       { paso: 'hse', status: 'pendiente' },
+      { paso: 'validaciones', status: 'no_aplica' },
     ];
 
     for (const aprobacion of aprobaciones) {
@@ -379,6 +437,7 @@ export async function createActa(req, res) {
 export async function getActas(req, res) {
   try {
     const pool = getPool();
+    await repairPendingValidationForHseApprovedActas(pool);
     const result = await pool.request().query('SELECT * FROM actas ORDER BY createdAt DESC');
     const materialsResult = await pool.request().query('SELECT * FROM acta_materiales ORDER BY createdAt, id');
     const approvalsResult = await pool.request().query('SELECT actaId, paso, status, aprobador, comentario, motivo, ajustes FROM acta_aprobaciones');
@@ -392,11 +451,15 @@ export async function getActas(req, res) {
       groups[approval.actaId].push(serializeApproval(approval));
       return groups;
     }, {});
-    res.json(result.recordset.map((acta) => ({
-      ...acta,
-      materiales: materialsByActa[acta.id] || [],
-      aprobaciones: approvalsByActa[acta.id] || [],
-    })));
+    res.json(result.recordset.map((acta) => {
+      const actaSummary = { ...acta };
+      delete actaSummary.adjuntos;
+      return {
+        ...actaSummary,
+        materiales: materialsByActa[acta.id] || [],
+        aprobaciones: approvalsByActa[acta.id] || [],
+      };
+    }));
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -407,6 +470,7 @@ export async function getActaById(req, res) {
   try {
     const { id } = req.params;
     const pool = getPool();
+    await repairPendingValidationForHseApprovedActas(pool, id);
 
     const actaResult = await pool.request()
       .input('id', id)
@@ -500,6 +564,109 @@ export async function updateActa(req, res) {
   }
 }
 
+export async function updateValidationWeight(req, res) {
+  const { id } = req.params;
+  const { materialId, pesoKg } = req.body || {};
+  if (typeof pesoKg !== 'number' || !Number.isFinite(pesoKg) || pesoKg < 0) {
+    return res.status(400).json({ error: 'El peso debe ser un número válido mayor o igual a cero.' });
+  }
+
+  const transaction = new sql.Transaction(getPool());
+  let transactionStarted = false;
+  let transactionCompleted = false;
+  try {
+    await transaction.begin();
+    transactionStarted = true;
+
+    const actaResult = await new sql.Request(transaction)
+      .input('id', id)
+      .query("SELECT consecutivo, status, pesoKg FROM actas WITH (UPDLOCK, HOLDLOCK) WHERE id = @id");
+    const acta = actaResult.recordset[0];
+    if (!acta) {
+      await transaction.rollback();
+      transactionCompleted = true;
+      return res.status(404).json({ error: 'Acta no encontrada' });
+    }
+    if (acta.status !== 'pendiente_validaciones') {
+      await transaction.rollback();
+      transactionCompleted = true;
+      return res.status(409).json({ error: 'El peso solo se puede editar durante la etapa de Validaciones.' });
+    }
+
+    const materialsResult = await new sql.Request(transaction)
+      .input('actaId', id)
+      .query('SELECT id, descripcion, pesoKg FROM acta_materiales WHERE actaId = @actaId');
+    if (materialsResult.recordset.length === 0) {
+      if (materialId) {
+        await transaction.rollback();
+        transactionCompleted = true;
+        return res.status(404).json({ error: 'No se encontró el material del acta.' });
+      }
+      await new sql.Request(transaction)
+        .input('id', id)
+        .input('pesoKg', pesoKg)
+        .query('UPDATE actas SET pesoKg = @pesoKg, updatedAt = GETDATE() WHERE id = @id');
+    } else {
+      if (typeof materialId !== 'string' || !materialId.trim()) {
+        await transaction.rollback();
+        transactionCompleted = true;
+        return res.status(400).json({ error: 'Debe indicar el material al que corresponde el peso.' });
+      }
+      const material = materialsResult.recordset.find((item) => item.id === materialId);
+      if (!material) {
+        await transaction.rollback();
+        transactionCompleted = true;
+        return res.status(404).json({ error: 'El material no pertenece a esta acta.' });
+      }
+
+      await new sql.Request(transaction)
+        .input('materialId', materialId)
+        .input('actaId', id)
+        .input('pesoKg', pesoKg)
+        .query('UPDATE acta_materiales SET pesoKg = @pesoKg WHERE id = @materialId AND actaId = @actaId');
+      const totalResult = await new sql.Request(transaction)
+        .input('actaId', id)
+        .query('SELECT COALESCE(SUM(COALESCE(pesoKg, 0)), 0) AS pesoTotal FROM acta_materiales WHERE actaId = @actaId');
+      await new sql.Request(transaction)
+        .input('id', id)
+        .input('pesoKg', totalResult.recordset[0].pesoTotal)
+        .query('UPDATE actas SET pesoKg = @pesoKg, updatedAt = GETDATE() WHERE id = @id');
+    }
+
+    const previousWeight = materialsResult.recordset.length
+      ? materialsResult.recordset.find((item) => item.id === materialId)?.pesoKg ?? '—'
+      : acta.pesoKg ?? '—';
+    const materialDescription = materialsResult.recordset.find((item) => item.id === materialId)?.descripcion;
+    const action = materialsResult.recordset.length
+      ? `Validaciones corrigió el peso de ${materialDescription || 'un material'}: ${previousWeight} kg → ${pesoKg} kg.`
+      : `Validaciones corrigió el peso del acta: ${pesoKg} kg.`;
+    const now = new Date();
+    await new sql.Request(transaction)
+      .input('id', `h${Date.now()}-${Math.random().toString(36).slice(2, 8)}`)
+      .input('actaId', id)
+      .input('usuario', req.user.username)
+      .input('fecha', now.toISOString().slice(0, 10))
+      .input('hora', now.toTimeString().slice(0, 5))
+      .input('equipo', 'WEB')
+      .input('accion', action)
+      .query(`INSERT INTO acta_historial (id, actaId, usuario, fecha, hora, equipo, accion)
+        VALUES (@id, @actaId, @usuario, @fecha, @hora, @equipo, @accion)`);
+
+    await transaction.commit();
+    transactionCompleted = true;
+    res.json({ message: 'Peso actualizado correctamente.' });
+  } catch (error) {
+    if (transactionStarted && !transactionCompleted) {
+      try {
+        await transaction.rollback();
+      } catch (rollbackError) {
+        console.error('No se pudo revertir la actualización del peso:', rollbackError);
+      }
+    }
+    res.status(500).json({ error: error.message });
+  }
+}
+
 // Eliminar acta
 export async function deleteActa(req, res) {
   try {
@@ -568,7 +735,7 @@ export async function submitActa(req, res) {
       .query('SELECT id, consecutivo, solicitanteId, status, area, tipoMaterial FROM actas WHERE id = @id');
     const acta = actaResult.recordset[0];
     if (!acta) return res.status(404).json({ error: 'Acta no encontrada' });
-    if (['pendiente_aprobacion_material', 'pendiente_aprobacion_area', 'pendiente_costos', 'pendiente_hse', 'aprobada'].includes(acta.status)) {
+    if (['pendiente_aprobacion_material', 'pendiente_aprobacion_area', 'pendiente_costos', 'pendiente_hse', 'pendiente_validaciones', 'aprobada'].includes(acta.status)) {
       return res.status(409).json({ error: 'El acta ya se encuentra en el flujo de aprobación' });
     }
 
@@ -602,7 +769,7 @@ export async function submitActa(req, res) {
     await pool.request()
       .input('actaId', id)
       .query(`UPDATE acta_aprobaciones
-        SET status = CASE WHEN paso = 'costos' THEN 'no_aplica' ELSE 'pendiente' END,
+        SET status = CASE WHEN paso IN ('costos', 'validaciones') THEN 'no_aplica' ELSE 'pendiente' END,
           aprobador = NULL, comentario = NULL, motivo = NULL, ajustes = NULL
         WHERE actaId = @actaId`);
 
@@ -631,7 +798,7 @@ export async function submitActa(req, res) {
 export async function approveActa(req, res) {
   try {
     const { id } = req.params;
-    const { paso, aprobador, comentario } = req.body;
+    const { paso, comentario } = req.body;
     const pool = getPool();
 
     const actaResult = await pool.request()
@@ -665,7 +832,7 @@ export async function approveActa(req, res) {
     await pool.request()
       .input('actaId', id)
       .input('paso', paso)
-      .input('aprobador', aprobador)
+      .input('aprobador', req.user.username)
       .input('comentario', comentario)
       .query(`
         UPDATE acta_aprobaciones SET status = 'aprobado', aprobador = @aprobador, comentario = @comentario
@@ -682,6 +849,8 @@ export async function approveActa(req, res) {
       nextStatus = nextMaterialStep ? 'pendiente_aprobacion_material' : 'pendiente_hse';
     } else if (paso.startsWith('material_')) {
       nextStatus = nextMaterialStep ? 'pendiente_aprobacion_material' : 'pendiente_hse';
+    } else if (paso === 'hse') {
+      nextStatus = 'pendiente_validaciones';
     } else {
       nextStatus = 'aprobada';
     }
@@ -715,15 +884,31 @@ export async function approveActa(req, res) {
         .query('UPDATE actas SET status = @status, updatedAt = GETDATE() WHERE id = @id');
     }
 
+    if (paso === 'hse') {
+      const validationApproval = await pool.request()
+        .input('actaId', id)
+        .query("SELECT id FROM acta_aprobaciones WHERE actaId = @actaId AND paso = 'validaciones'");
+      if (validationApproval.recordset.length) {
+        await pool.request()
+          .input('actaId', id)
+          .query("UPDATE acta_aprobaciones SET status = 'pendiente', aprobador = NULL, comentario = NULL, motivo = NULL, ajustes = NULL WHERE actaId = @actaId AND paso = 'validaciones'");
+      } else {
+        await pool.request()
+          .input('id', `ap${Date.now()}-${Math.random().toString(36).slice(2, 8)}`)
+          .input('actaId', id)
+          .query("INSERT INTO acta_aprobaciones (id, actaId, paso, status) VALUES (@id, @actaId, 'validaciones', 'pendiente')");
+      }
+    }
+
     const activeMaterialStep = nextStatus === 'pendiente_aprobacion_material'
       ? await getNextPendingMaterialApproval(pool, id)
       : null;
     const nextRole = activeMaterialStep
       ? MATERIAL_APPROVAL_ROLES[activeMaterialStep]
-      : nextStatus === 'pendiente_costos' ? 'costos' : nextStatus === 'pendiente_hse' ? 'hse' : null;
+      : nextStatus === 'pendiente_costos' ? 'costos' : nextStatus === 'pendiente_hse' ? 'hse' : nextStatus === 'pendiente_validaciones' ? 'validaciones' : null;
     const nextRoleLabel = activeMaterialStep
       ? MATERIAL_APPROVAL_LABELS[activeMaterialStep]
-      : nextRole === 'costos' ? 'Costos' : 'HSE & S';
+      : nextRole === 'costos' ? 'Costos' : nextRole === 'validaciones' ? 'Validaciones' : 'HSE & S';
 
     // El correo al siguiente aprobador sale después de persistir el cambio de estado.
     let emailNotifications = [];
@@ -749,10 +934,10 @@ export async function approveActa(req, res) {
     if (paso === 'hse') {
       const areaApprover = await getAreaApproverIdentifier(pool, id);
       areaApproverNotifications = await notifyAreaApprovers(pool, acta.area, {
-        title: 'Acta aprobada por HSE',
-        message: `HSE aprobó el acta ${acta.consecutivo}. El proceso de aprobación ha finalizado.`,
-        emailStage: 'Acta aprobada por HSE',
-        type: 'success',
+        title: 'Acta enviada a Validaciones',
+        message: `HSE finalizó la revisión del acta ${acta.consecutivo}. El acta pasa ahora a Validaciones.`,
+        emailStage: 'Acta enviada a Validaciones',
+        type: 'info',
         actaId: id,
         actaReference: acta.consecutivo,
       }, areaApprover);
@@ -761,7 +946,7 @@ export async function approveActa(req, res) {
     const requester = await getActiveUser(pool, acta.solicitanteId);
     if (requester) {
       const approvalStage = MATERIAL_APPROVAL_LABELS[paso]
-        || (paso === 'area' ? 'el área' : paso === 'costos' ? 'Costos' : 'HSE');
+        || (paso === 'area' ? 'el área' : paso === 'costos' ? 'Costos' : paso === 'validaciones' ? 'Validaciones' : 'HSE');
       const statusMessage = nextRole
         ? `fue aprobada por ${approvalStage} y ahora está pendiente de revisión por ${nextRoleLabel}.`
         : 'fue aprobada completamente.';
@@ -950,7 +1135,7 @@ export async function rejectActa(req, res) {
 export async function returnActa(req, res) {
   try {
     const { id } = req.params;
-    const { paso, aprobador, ajustes } = req.body;
+    const { paso, ajustes } = req.body;
     const pool = getPool();
     const actaResult = await pool.request().input('id', id)
       .query('SELECT consecutivo, solicitanteId, status, area FROM actas WHERE id = @id');
@@ -968,7 +1153,7 @@ export async function returnActa(req, res) {
     }
 
     await pool.request()
-      .input('actaId', id).input('paso', paso).input('aprobador', aprobador).input('ajustes', JSON.stringify(ajustes || []))
+      .input('actaId', id).input('paso', paso).input('aprobador', req.user.username).input('ajustes', JSON.stringify(ajustes || []))
       .query("UPDATE acta_aprobaciones SET status = 'devuelto', aprobador = @aprobador, ajustes = @ajustes WHERE actaId = @actaId AND paso = @paso");
     await pool.request().input('id', id)
       .query("UPDATE actas SET status = 'devuelta_ajustes', updatedAt = GETDATE() WHERE id = @id");

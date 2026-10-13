@@ -7,8 +7,9 @@ const PASO_LABELS = {
   area: "Aprobación de Área",
   costos: "Aprobación de Costos",
   hse: "Aprobación HSE & S",
+  validaciones: "Validaciones finales",
 };
-const PASO_ORDER = ["area", "costos", "material_planeacion", "material_lab_calidad", "hse"];
+const PASO_ORDER = ["area", "costos", "material_planeacion", "material_lab_calidad", "hse", "validaciones"];
 
 interface TimelineProps {
   aprobaciones: ActaAprobacion[];

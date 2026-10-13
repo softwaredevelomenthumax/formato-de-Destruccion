@@ -259,6 +259,34 @@ export async function initializeDatabase() {
       WHERE paso = 'area'
         AND actaId IN (SELECT id FROM actas WHERE status = 'pendiente_aprobacion_area')
         AND status = 'no_aplica';
+
+      INSERT INTO acta_aprobaciones (id, actaId, paso, status)
+      SELECT 'apv-' + REPLACE(CONVERT(NVARCHAR(36), NEWID()), '-', ''), actas.id, 'validaciones', 'no_aplica'
+      FROM actas
+      WHERE NOT EXISTS (
+        SELECT 1 FROM acta_aprobaciones
+        WHERE acta_aprobaciones.actaId = actas.id AND acta_aprobaciones.paso = 'validaciones'
+      );
+
+      UPDATE actas
+      SET status = 'pendiente_validaciones', updatedAt = GETDATE()
+      WHERE status = 'aprobada'
+        AND EXISTS (
+          SELECT 1 FROM acta_aprobaciones hse
+          WHERE hse.actaId = actas.id AND hse.paso = 'hse' AND hse.status = 'aprobado'
+        )
+        AND EXISTS (
+          SELECT 1 FROM acta_aprobaciones validaciones
+          WHERE validaciones.actaId = actas.id
+            AND validaciones.paso = 'validaciones'
+            AND validaciones.status = 'no_aplica'
+        );
+
+      UPDATE acta_aprobaciones
+      SET status = 'pendiente'
+      WHERE paso = 'validaciones'
+        AND status = 'no_aplica'
+        AND actaId IN (SELECT id FROM actas WHERE status = 'pendiente_validaciones');
     `);
 
     console.log('✓ Tablas creadas exitosamente');

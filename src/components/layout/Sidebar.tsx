@@ -23,11 +23,11 @@ interface NavItem {
 }
 
 const NAV_ITEMS: NavItem[] = [
-  { to: "/dashboard", label: "Dashboard", icon: <LayoutDashboard size={18} />, roles: ["administrador", "admin_global", "solicitante", "aprobador_area", "costos", "hse", "planeacion", "lab_calidad"] },
-  { to: "/perfil", label: "Mi perfil", icon: <UserCircle2 size={18} />, roles: ["administrador", "admin_global", "solicitante", "aprobador_area", "costos", "hse", "planeacion", "lab_calidad"] },
-  { to: "/actas", label: "Ver actas", icon: <FileText size={18} />, roles: ["administrador", "admin_global", "solicitante", "aprobador_area", "costos", "hse", "planeacion", "lab_calidad"] },
+  { to: "/dashboard", label: "Dashboard", icon: <LayoutDashboard size={18} />, roles: ["administrador", "admin_global", "solicitante", "aprobador_area", "costos", "hse", "validaciones", "planeacion", "lab_calidad"] },
+  { to: "/perfil", label: "Mi perfil", icon: <UserCircle2 size={18} />, roles: ["administrador", "admin_global", "solicitante", "aprobador_area", "costos", "hse", "validaciones", "planeacion", "lab_calidad"] },
+  { to: "/actas", label: "Ver actas", icon: <FileText size={18} />, roles: ["administrador", "admin_global", "solicitante", "aprobador_area", "costos", "hse", "validaciones", "planeacion", "lab_calidad"] },
   { to: "/actas/nueva", label: "Nueva Acta", icon: <FilePlus size={18} />, roles: ["solicitante"] },
-  { to: "/aprobaciones", label: "Pendientes de Aprobación", icon: <ClipboardCheck size={18} />, roles: ["aprobador_area", "costos", "hse", "planeacion", "lab_calidad"] },
+  { to: "/aprobaciones", label: "Pendientes de Aprobación", icon: <ClipboardCheck size={18} />, roles: ["aprobador_area", "costos", "hse", "validaciones", "planeacion", "lab_calidad"] },
   { to: "/usuarios", label: "Gestión de Usuarios", icon: <Users size={18} />, roles: ["administrador", "admin_global"] },
   { to: "/maestros/cecos", label: "Maestro CeCos", icon: <Building2 size={18} />, roles: ["costos"] },
   { to: "/maestros/invima", label: "Maestro unificado", icon: <Package size={18} />, roles: ["planeacion"] },
@@ -118,7 +118,9 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps) {
       ? pendingMaterialCount + actas.filter((acta) => acta.status === "pendiente_costos").length
       : user.rol === "hse"
         ? actas.filter((acta) => acta.status === "pendiente_hse").length
-        : pendingMaterialCount;
+        : user.rol === "validaciones"
+          ? actas.filter((acta) => acta.status === "pendiente_validaciones").length
+            : pendingMaterialCount;
 
   const filteredNav = NAV_ITEMS.filter((item) => item.roles.includes(user.rol));
   const toggleTheme = () => setTheme((t) => (t === "dark" ? "light" : "dark"));

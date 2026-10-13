@@ -5,6 +5,7 @@ export type Role =
   | "aprobador_area"
   | "costos"
   | "hse"
+  | "validaciones"
   | "planeacion"
   | "lab_calidad";
 
@@ -16,6 +17,7 @@ export type ActaStatus =
   | "pendiente_aprobacion_area"
   | "pendiente_costos"
   | "pendiente_hse"
+  | "pendiente_validaciones"
   | "devuelta_ajustes"
   | "rechazada"
   | "aprobada"
@@ -140,7 +142,7 @@ export interface AjusteField {
 }
 
 export interface ActaAprobacion {
-  paso: "area" | "costos" | "hse" | "material_costos" | "material_planeacion" | "material_lab_calidad";
+  paso: "area" | "costos" | "hse" | "validaciones" | "material_costos" | "material_planeacion" | "material_lab_calidad";
   aprobador?: string;
   fechaAprobacion?: string;
   status: "pendiente" | "aprobado" | "rechazado" | "devuelto" | "no_aplica";

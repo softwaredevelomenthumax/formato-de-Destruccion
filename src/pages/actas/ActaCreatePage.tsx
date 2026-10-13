@@ -15,7 +15,7 @@ import {
   CLASIFICACION_LABELS, CAUSAL_LABELS, CAUSAL_DESCRIPTIONS, EMPRESAS, AREAS
 } from "../../constants";
 import { MATERIAL_TYPE_OPTIONS, normalizeMaterialType } from "../../constants/materialTypes";
-import type { ActaMaterial, CausalDestruccion, Ceco, Empresa, InvimaProduct } from "../../types";
+import type { Acta, ActaMaterial, CausalDestruccion, Ceco, Empresa, InvimaProduct } from "../../types";
 import { api } from "../../services/api.ts";
 import { toast } from "sonner";
 import { parseActaAttachment, readFileAsDataUrl, serializeActaAttachment } from "../../utils/actaAttachments";
@@ -338,11 +338,42 @@ function FieldError({ message }: { message?: string | { message?: string } | unk
 export default function ActaCreatePage() {
   const { user } = useAuth();
   const { id } = useParams();
-  const { actas, createActa, updateActa, sendActa, invimaProducts } = useApp();
+  const { createActa, updateActa, sendActa, invimaProducts } = useApp();
   const navigate = useNavigate();
-  const editingActa = id ? actas.find((acta) => acta.id === id) : undefined;
+  const [loadedEditingActa, setLoadedEditingActa] = useState<Acta | null>(null);
+  const [isLoadingEditingActa, setIsLoadingEditingActa] = useState(!!id);
+  const [editingActaLoadFailed, setEditingActaLoadFailed] = useState(false);
+  const editingActa = loadedEditingActa?.id === id ? loadedEditingActa : undefined;
   const isEditing = !!editingActa;
   const isReturnedForAdjustments = editingActa?.status === "devuelta_ajustes";
+
+  useEffect(() => {
+    let isCurrent = true;
+    if (!id) {
+      setIsLoadingEditingActa(false);
+      return;
+    }
+
+    setIsLoadingEditingActa(true);
+    setEditingActaLoadFailed(false);
+    api.getActa(id)
+      .then((data: Acta) => {
+        if (isCurrent) setLoadedEditingActa(data);
+      })
+      .catch((error) => {
+        if (isCurrent) {
+          setEditingActaLoadFailed(true);
+          toast.error(error instanceof Error ? error.message : "No se pudo cargar el acta para editar.");
+        }
+      })
+      .finally(() => {
+        if (isCurrent) setIsLoadingEditingActa(false);
+      });
+
+    return () => {
+      isCurrent = false;
+    };
+  }, [id]);
 
   const [currentStep, setCurrentStep] = useState(0);
   const [completedSteps, setCompletedSteps] = useState<number[]>([]);
@@ -1098,6 +1129,19 @@ export default function ActaCreatePage() {
     cantidadUnidades: totals.cantidadUnidades + Number(material.cantidadUnidades || 0),
     costoTotal: totals.costoTotal + Number(material.costoTotal ?? (Number(material.cantidadUnidades || 0) * Number(material.costoUnitario || 0))),
   }), { pesoKg: 0, cantidadUnidades: 0, costoTotal: 0 });
+
+  if (id && isLoadingEditingActa) {
+    return <div className="py-20 text-center text-sm text-slate-500">Cargando acta...</div>;
+  }
+
+  if (id && (editingActaLoadFailed || !editingActa)) {
+    return (
+      <div className="py-20 text-center">
+        <p className="text-slate-500">No se pudo cargar el acta para editar.</p>
+        <button onClick={() => navigate("/actas")} className="mt-4 text-blue-700 text-sm">Volver a la lista</button>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-3xl mx-auto space-y-6">
