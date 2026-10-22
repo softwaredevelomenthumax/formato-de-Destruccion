@@ -183,6 +183,7 @@ export const AREAS = [
   "Control de Calidad",
   "Aseguramiento de Calidad",
   "Dispensado",
+  "Acondicionamiento",
   "Manufactura Líquidos",
   "Manufactura Sólidos",
   "Compresión",
