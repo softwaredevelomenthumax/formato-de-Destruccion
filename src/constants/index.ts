@@ -178,6 +178,7 @@ export const CAUSAL_DESCRIPTIONS: Record<
 export const EMPRESAS: Empresa[] = ["Humax", "Farmatech", "Cambridge"];
 
 export const AREAS = [
+  "Administrativa",
   "Producción",
   "Control de Calidad",
   "Aseguramiento de Calidad",
