@@ -1,146 +1,40 @@
-# Frontend - Destrucción Gestión
+# Gestión de Actas de Destrucción
 
-Aplicación React + Vite para gestión de actas de destrucción, integrada con backend Node.js + SQL Server.
+Aplicación web para registrar, aprobar y consultar actas de destrucción, con frontend React/Vite y backend Node.js/Express conectado a SQL Server.
 
-## Cambios de localStorage a API Backend
+## Inicio rápido
 
-Esta versión del frontend ha sido migrada completamente de `localStorage` a un backend completo con base de datos SQL Server.
+Requisitos: Node.js 22, pnpm 10.34.3 y una instancia accesible de SQL Server.
 
-### Antes (localStorage)
-```typescript
-// Ya NO se usa
-const stored = localStorage.getItem("add_actas");
-const actas = stored ? JSON.parse(stored) : [];
-```
+1. Configura `backend/.env` con las credenciales de SQL Server y JWT. La plantilla disponible es [`backend/.env.example`](backend/.env.example); guarda los valores reales solo en el entorno local/seguro.
+2. Instala y ejecuta el backend:
 
-### Ahora (API Backend)
-```typescript
-// Se usan APIs REST
-const actas = await api.getActas();
-const newActa = await api.createActa(data);
-```
+   ```bash
+   cd backend
+   pnpm install
+   pnpm dev
+   ```
 
-## Configuración
+3. En una terminal desde la raíz, instala y ejecuta el frontend:
 
-### 1. Crear archivo `.env`
+   ```bash
+   pnpm install
+   pnpm dev
+   ```
 
-```bash
-cp .env.example .env
-```
+El backend usa el puerto `3004` por defecto. Para apuntar el frontend a otra dirección, define `VITE_API_URL` (o `VITE_API_BASE_URL`), por ejemplo `http://localhost:3004/api`.
 
-### 2. Configurar URL del API
+## Comandos principales
 
-Edita `.env`:
+| Comando | Uso |
+|---|---|
+| `pnpm dev` | Inicia Vite en desarrollo. |
+| `pnpm build` | Genera el build del frontend. |
+| `pnpm preview` | Sirve localmente el build generado. |
+| `pnpm format` | Formatea el código con oxfmt. |
 
-```env
-# URL del backend (ajusta según tu configuración)
-VITE_API_URL=http://localhost:3004/api
-```
+En `backend/`: `pnpm dev` inicia el servidor con watch, `pnpm start` lo ejecuta normalmente, `pnpm setup-db` ejecuta el seed y `pnpm import-zmm059` ejecuta el importador de datos ZMM059.
 
-Para **producción**:
-```env
-VITE_API_URL=https://tu-dominio.com/api
-```
+## Documentación
 
-## Instalar y ejecutar
-
-```bash
-# Instalar dependencias
-pnpm install
-
-# Modo desarrollo (requiere backend corriendo en otro terminal)
-pnpm run dev
-
-# Build para producción
-pnpm build
-
-# Preview del build
-pnpm preview
-```
-
-## Requisitos previos
-
-El **backend DEBE estar corriendo** en `http://localhost:3004` (o la URL que hayas configurado en `.env`)
-
-### Iniciar backend (en otra terminal):
-
-```bash
-cd backend
-pnpm install
-pnpm run dev
-```
-
-## Cambios principales
-
-### AppContext.tsx
-- ✅ Ahora usa `api.getUsers()`, `api.createActa()`, etc.
-- ✅ Las funciones retornan Promises (`async/await`)
-- ✅ Sincronización automática con SQL Server
-- ✅ Mejor manejo de errores
-
-### AuthContext.tsx
-- ✅ Login ahora llama a `/api/auth/login`
-- ✅ Almacena token JWT para autenticación
-- ✅ Validación en el backend
-
-### Servicio de API
-Archivo: [src/services/api.js](src/services/api.js)
-
-Define todas las llamadas a la API de forma centralizada y reutilizable.
-
-## Ejemplos de uso
-
-### Crear acta
-```typescript
-const { createActa } = useApp();
-
-await createActa({
-  solicitanteId: user.id,
-  solicitanteNombre: user.nombre,
-  clasificacion: "producto_terminado",
-  // ... resto de campos
-});
-```
-
-### Obtener notificaciones
-```typescript
-const { loadNotifications, notifications } = useApp();
-
-await loadNotifications(userId);
-// notifications se actualiza automáticamente
-```
-
-### Aprobar acta
-```typescript
-const { approveActa } = useApp();
-
-await approveActa(actaId, "area", approbador, "Aprobado");
-```
-
-## Troubleshooting
-
-### Error: "Error conectando al servidor"
-- Verifica que el backend esté corriendo
-- Comprueba la URL en `.env` (VITE_API_URL)
-- Revisa la consola del navegador (F12) para más detalles
-
-### Error: "CORS error"
-- Asegúrate que CORS_ORIGIN en backend/.env coincide
-- Ejemplo: `CORS_ORIGIN=http://localhost:5173`
-
-### Las notificaciones no se actualizan
-- Llama a `loadNotifications(userId)` después de cambios
-- El estado se actualiza automáticamente
-
-## Estructura de datos
-
-Los datos ahora se persisten en SQL Server con estas tablas:
-- `users` - Usuarios del sistema
-- `actas` - Actas de destrucción
-- `acta_historial` - Historial de cada acta
-- `acta_aprobaciones` - Estados de aprobación
-- `notifications` - Notificaciones de usuarios
-- `solicitudes` - Solicitudes de registro pendientes
-- `invima_products` - Productos INVIMA
-
-Consulta `backend/README.md` para más información.
+Consulta la [documentación técnica y funcional completa](docs/DOCUMENTACION_COMPLETA_PROYECTO.md) para arquitectura, módulos, roles, API, modelo de datos, variables de entorno, instalación, operación y límites conocidos.

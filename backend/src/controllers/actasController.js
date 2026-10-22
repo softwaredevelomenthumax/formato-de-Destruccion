@@ -25,11 +25,12 @@ async function createAndSendNotification(pool, recipient, { title, message, type
     stage: emailStage,
   });
   const recipientIdentifier = recipient.username || recipient.id;
+  const notificationStage = emailStage || title;
   if (emailResult.sent) {
-    console.info(`Correo de notificación aceptado por SMTP para ${recipientIdentifier} (entrega al buzón no confirmada): ${emailResult.messageId || 'sin ID de mensaje'}`);
+    console.info(`Correo de notificación aceptado por SMTP para ${recipientIdentifier} (${notificationStage}; entrega al buzón no confirmada): ${emailResult.messageId || 'sin ID de mensaje'}`);
   } else {
     const reason = emailResult.reason === 'no_email' ? 'el usuario no tiene un correo registrado' : emailResult.reason || 'error desconocido';
-    console.error(`Correo de notificación no enviado para ${recipientIdentifier}: ${reason}`);
+    console.error(`Correo de notificación no enviado para ${recipientIdentifier} (${notificationStage}): ${reason}`);
   }
   return { userId: recipient.id, sent: emailResult.sent, reason: emailResult.reason };
 }
@@ -226,23 +227,68 @@ async function getAreaApproverIdentifier(pool, actaId) {
   return result.recordset[0]?.aprobador;
 }
 
+async function notifyApprovalActor(pool, actaId, paso, notification) {
+  const approvalResult = await pool.request()
+    .input('actaId', actaId)
+    .input('paso', paso)
+    .query('SELECT aprobador FROM acta_aprobaciones WHERE actaId = @actaId AND paso = @paso');
+  const approverIdentifier = approvalResult.recordset[0]?.aprobador?.trim();
+  if (!approverIdentifier) {
+    return { deliveries: [], warning: `El historial del acta no tiene registrado quién aprobó ${paso}.` };
+  }
+
+  const userResult = await pool.request()
+    .input('identifier', approverIdentifier.toLocaleLowerCase('es-CO'))
+    .query(`SELECT id, username, nombre, email FROM users
+      WHERE LOWER(LTRIM(RTRIM(username))) = @identifier
+        OR LOWER(LTRIM(RTRIM(nombre))) = @identifier`);
+  const users = userResult.recordset;
+  const identifierKey = normalizeArea(approverIdentifier);
+  const recipients = users.filter((user) => normalizeArea(user.username) === identifierKey);
+  const matchedRecipients = recipients.length
+    ? recipients
+    : users.filter((user) => normalizeArea(user.nombre) === identifierKey);
+  if (!matchedRecipients.length) {
+    return { deliveries: [], warning: `No se encontró una cuenta asociada a "${approverIdentifier}", registrado como aprobador de ${paso}.` };
+  }
+
+  const deliveries = await Promise.allSettled(
+    matchedRecipients.map((recipient) => createAndSendNotification(pool, recipient, notification)),
+  );
+  return {
+    deliveries: deliveries.map((delivery, index) => delivery.status === 'fulfilled'
+      ? delivery.value
+      : { userId: matchedRecipients[index].id, sent: false, reason: delivery.reason?.message || 'notification_failed' }),
+  };
+}
+
 async function notifyAreaApprovers(pool, area, notification, approverIdentifier) {
   const areaKey = normalizeArea(area);
   if (!areaKey) {
     console.warn("Acta sin área: no se envió notificación a aprobadores de área.");
-    return;
+    return [];
   }
 
   const result = await pool.request()
-    .query("SELECT id, username, nombre, email, area FROM users WHERE rol = 'aprobador_area' AND status = 'activo'");
+    .query(`SELECT id, username, nombre, email, area FROM users
+      WHERE LOWER(LTRIM(RTRIM(rol))) = 'aprobador_area'
+        AND LOWER(LTRIM(RTRIM(status))) = 'activo'`);
   const approverKey = normalizeArea(approverIdentifier);
-  const recipients = result.recordset.filter((user) =>
-    normalizeArea(user.area) === areaKey
-      && (!approverKey || normalizeArea(user.username) === approverKey || normalizeArea(user.nombre) === approverKey)
-  );
+  const activeApprovers = result.recordset;
+  let recipients;
+  if (approverKey) {
+    const byUsername = activeApprovers.filter((user) => normalizeArea(user.username) === approverKey);
+    recipients = byUsername.length
+      ? byUsername
+      : activeApprovers.filter((user) => normalizeArea(user.nombre) === approverKey);
+  } else {
+    recipients = activeApprovers.filter((user) => normalizeArea(user.area) === areaKey);
+  }
   if (!recipients.length) {
-    console.warn(`No hay aprobador activo para el área: ${area}`);
-    return;
+    console.warn(approverKey
+      ? `No se encontró un usuario activo con rol de aprobador de área que coincida con el aprobador registrado (${approverIdentifier}).`
+      : `No hay aprobador activo para el área: ${area}`);
+    return [];
   }
   const deliveries = await Promise.allSettled(recipients.map((recipient) => createAndSendNotification(pool, recipient, notification)));
   return deliveries.map((delivery, index) => delivery.status === 'fulfilled'
@@ -253,7 +299,7 @@ async function notifyAreaApprovers(pool, area, notification, approverIdentifier)
 async function getActiveUser(pool, userId) {
   const result = await pool.request()
     .input('userId', userId)
-    .query("SELECT id, nombre, email FROM users WHERE id = @userId AND status = 'activo'");
+    .query("SELECT id, username, nombre, email FROM users WHERE id = @userId AND status = 'activo'");
   return result.recordset[0];
 }
 
@@ -590,7 +636,7 @@ export async function updateValidationWeight(req, res) {
     if (acta.status !== 'pendiente_validaciones') {
       await transaction.rollback();
       transactionCompleted = true;
-      return res.status(409).json({ error: 'El peso solo se puede editar durante la etapa de Validaciones.' });
+      return res.status(409).json({ error: 'El peso solo se puede editar durante la etapa de Validación final.' });
     }
 
     const materialsResult = await new sql.Request(transaction)
@@ -638,8 +684,8 @@ export async function updateValidationWeight(req, res) {
       : acta.pesoKg ?? '—';
     const materialDescription = materialsResult.recordset.find((item) => item.id === materialId)?.descripcion;
     const action = materialsResult.recordset.length
-      ? `Validaciones corrigió el peso de ${materialDescription || 'un material'}: ${previousWeight} kg → ${pesoKg} kg.`
-      : `Validaciones corrigió el peso del acta: ${pesoKg} kg.`;
+      ? `Validación final corrigió el peso de ${materialDescription || 'un material'}: ${previousWeight} kg → ${pesoKg} kg.`
+      : `Validación final corrigió el peso del acta: ${pesoKg} kg.`;
     const now = new Date();
     await new sql.Request(transaction)
       .input('id', `h${Date.now()}-${Math.random().toString(36).slice(2, 8)}`)
@@ -908,7 +954,7 @@ export async function approveActa(req, res) {
       : nextStatus === 'pendiente_costos' ? 'costos' : nextStatus === 'pendiente_hse' ? 'hse' : nextStatus === 'pendiente_validaciones' ? 'validaciones' : null;
     const nextRoleLabel = activeMaterialStep
       ? MATERIAL_APPROVAL_LABELS[activeMaterialStep]
-      : nextRole === 'costos' ? 'Costos' : nextRole === 'validaciones' ? 'Validaciones' : 'HSE & S';
+      : nextRole === 'costos' ? 'Costos' : nextRole === 'validaciones' ? 'Validación final' : nextRole === 'hse' ? 'HSE & S' : null;
 
     // El correo al siguiente aprobador sale después de persistir el cambio de estado.
     let emailNotifications = [];
@@ -931,22 +977,47 @@ export async function approveActa(req, res) {
     }
 
     let areaApproverNotifications = [];
+    let areaApproverWarning;
+    let hseNotifications = [];
+    let hseWarning;
     if (paso === 'hse') {
       const areaApprover = await getAreaApproverIdentifier(pool, id);
       areaApproverNotifications = await notifyAreaApprovers(pool, acta.area, {
-        title: 'Acta enviada a Validaciones',
-        message: `HSE finalizó la revisión del acta ${acta.consecutivo}. El acta pasa ahora a Validaciones.`,
-        emailStage: 'Acta enviada a Validaciones',
+        title: 'Acta enviada a Validación final',
+        message: `HSE finalizó la revisión del acta ${acta.consecutivo}. El acta pasa ahora a Validación final.`,
+        emailStage: 'Acta enviada a Validación final',
         type: 'info',
         actaId: id,
         actaReference: acta.consecutivo,
       }, areaApprover);
+    } else if (paso === 'validaciones') {
+      const hseResult = await notifyApprovalActor(pool, id, 'hse', {
+        title: 'Acta finalizada por Validación final',
+        message: `El acta ${acta.consecutivo} fue finalizada y aprobada por Validación final. Ingresa al sistema para consultar el resultado final.`,
+        emailStage: 'Acta finalizada por Validación final',
+        type: 'success',
+        actaId: id,
+        actaReference: acta.consecutivo,
+      });
+      hseNotifications = hseResult.deliveries;
+      hseWarning = hseResult.warning;
+
+      const areaApproverResult = await notifyApprovalActor(pool, id, 'area', {
+        title: 'Acta finalizada y aprobada',
+        message: `El acta ${acta.consecutivo} fue finalizada y aprobada por Validación final. Ingresa al sistema para consultar el resultado final.`,
+        emailStage: 'Acta finalizada y aprobada por Validación final',
+        type: 'success',
+        actaId: id,
+        actaReference: acta.consecutivo,
+      });
+      areaApproverNotifications = areaApproverResult.deliveries;
+      areaApproverWarning = areaApproverResult.warning;
     }
 
     const requester = await getActiveUser(pool, acta.solicitanteId);
-    if (requester) {
+    if (requester && paso !== 'validaciones') {
       const approvalStage = MATERIAL_APPROVAL_LABELS[paso]
-        || (paso === 'area' ? 'el área' : paso === 'costos' ? 'Costos' : paso === 'validaciones' ? 'Validaciones' : 'HSE');
+        || (paso === 'area' ? 'el área' : paso === 'costos' ? 'Costos' : paso === 'validaciones' ? 'Validación final' : 'HSE');
       const statusMessage = nextRole
         ? `fue aprobada por ${approvalStage} y ahora está pendiente de revisión por ${nextRoleLabel}.`
         : 'fue aprobada completamente.';
@@ -963,6 +1034,9 @@ export async function approveActa(req, res) {
       message: 'Acta aprobada',
       emailNotifications,
       areaApproverNotifications,
+      areaApproverWarning,
+      hseNotifications,
+      hseWarning,
       status: nextStatus,
       nextApproval: nextRoleLabel || (nextStatus === 'pendiente_aprobacion_area' ? 'Aprobador del área' : null),
     });
@@ -988,9 +1062,12 @@ export async function resendHseEmail(req, res) {
     const recipientResult = await pool.request().query(`SELECT id, nombre, email FROM users
       WHERE LOWER(LTRIM(RTRIM(rol))) IN ('hse', 'hse & s', 'hse_s')
         AND LOWER(LTRIM(RTRIM(status))) = 'activo'`);
+    if (!recipientResult.recordset.length) {
+      return res.status(404).json({ error: 'No hay usuarios HSE activos registrados' });
+    }
     const recipients = recipientResult.recordset.filter((recipient) => recipient.email?.trim());
     if (!recipients.length) {
-      return res.status(404).json({ error: 'No hay usuarios HSE activos con correo registrado' });
+      return res.status(404).json({ error: 'Hay usuarios HSE activos, pero ninguno tiene correo registrado' });
     }
 
     const deliveries = await Promise.all(recipients.map(async (recipient) => {

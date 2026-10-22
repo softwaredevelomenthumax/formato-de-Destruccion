@@ -40,7 +40,7 @@ interface AppContextType {
   updateActa: (id: string, updates: Partial<Acta>, histEntry?: Omit<ActaHistorial, "id">) => Promise<void>;
   deleteActa: (id: string) => Promise<boolean>;
   sendActa: (id: string, userId: string, userName: string) => Promise<void>;
-    approveActa: (actaId: string, paso: ActaAprobacion["paso"], aprobador: string, comentario: string, requiereCostos?: boolean) => Promise<{ emailNotifications?: Array<{ sent: boolean; reason?: string }>; nextApproval?: string; acta: Acta }>;
+    approveActa: (actaId: string, paso: ActaAprobacion["paso"], aprobador: string, comentario: string, requiereCostos?: boolean) => Promise<{ emailNotifications?: Array<{ sent: boolean; reason?: string }>; areaApproverNotifications?: Array<{ sent: boolean; reason?: string }>; areaApproverWarning?: string; hseNotifications?: Array<{ sent: boolean; reason?: string }>; hseWarning?: string; nextApproval?: string; acta: Acta }>;
   rejectActa: (actaId: string, paso: ActaAprobacion["paso"], aprobador: string, motivo: string) => Promise<Acta>;
   returnActa: (actaId: string, paso: ActaAprobacion["paso"], aprobador: string, ajustes: ActaAprobacion["ajustes"]) => Promise<Acta>;
 

@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import { useApp } from "../../context/AppContext";
+import { ROLE_LABELS } from "../../constants";
 import type { Role } from "../../types";
 import { getFirstPendingMaterialApproval, MATERIAL_APPROVAL_ROLE_BY_STEP } from "../../constants/materialTypes";
 import logi from "../../public/logi.png";
@@ -248,7 +249,7 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps) {
             <>
               <div className="min-w-0 flex-1">
                 <p className="truncate text-xs font-medium text-slate-900 dark:text-slate-200">{user.nombre}</p>
-                <p className="truncate text-xs capitalize text-slate-500">{(user.rol ?? "solicitante").replace("_", " ")}</p>
+                <p className="truncate text-xs text-slate-500">{ROLE_LABELS[user.rol ?? "solicitante"]}</p>
               </div>
               <button
                 onClick={logout}

@@ -85,6 +85,8 @@ export async function sendNotificationEmail({ to, recipientName, title, message,
   const safeAppUrl = escapeHtml(appUrl);
   const intro = cleanStage.toLocaleLowerCase('es-CO').includes('hse')
     ? 'El aprobador del área ya revisó esta acta. Ahora está disponible para la revisión del equipo HSE & S.'
+    : cleanStage.toLocaleLowerCase('es-CO').includes('validación final')
+      ? 'El equipo de Validación final revisó esta acta. Ingresa al sistema para consultar el resultado final.'
     : cleanStage.toLocaleLowerCase('es-CO').includes('área')
       ? 'Hay una nueva acta pendiente de revisión y aprobación por parte del aprobador del área.'
       : 'Tienes una actualización sobre el flujo de aprobación de un acta.';

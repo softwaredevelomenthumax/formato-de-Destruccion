@@ -221,8 +221,31 @@ export default function ActaDetailPage() {
       const result = await approveActa(acta.id, paso, user.username, approveComment, paso === "area" ? requiresCostsByMaterialType : undefined);
       setLoadedActa(result.acta);
       const failedDeliveries = result.emailNotifications?.filter((delivery) => !delivery.sent) ?? [];
-      const nextApprovalRole = result.nextApproval || (paso === "area" ? (requiresCostsByMaterialType ? "Costos" : "HSE") : paso === "costos" ? "HSE" : null);
-      if (nextApprovalRole && failedDeliveries.length > 0) {
+      const nextApprovalRole = result.nextApproval;
+      if (paso === "validaciones") {
+        const getDeliveryIssue = (
+          recipient: string,
+          deliveries: Array<{ sent: boolean; reason?: string }>,
+          warning?: string,
+        ) => {
+          if (deliveries.length === 0) return warning || `No se identificó a ${recipient} que aprobó el acta.`;
+          const failures = deliveries.filter((delivery) => !delivery.sent);
+          if (failures.length === 0) return null;
+          if (failures.some((delivery) => delivery.reason === "no_email")) {
+            return `Hay usuarios de ${recipient} sin correo registrado.`;
+          }
+          return `No se pudo enviar el correo a ${recipient}; revisa la configuración SMTP del backend.`;
+        };
+        const notificationIssues = [
+          getDeliveryIssue("HSE", result.hseNotifications ?? [], result.hseWarning),
+          getDeliveryIssue("el aprobador de área", result.areaApproverNotifications ?? [], result.areaApproverWarning),
+        ].filter((issue): issue is string => Boolean(issue));
+        if (notificationIssues.length > 0) {
+          toast.warning(`Acta finalizada y aprobada. ${notificationIssues.join(" ")}`);
+        } else {
+          toast.success("Acta finalizada y aprobada; se notificó por correo a HSE y al aprobador de área.");
+        }
+      } else if (nextApprovalRole && failedDeliveries.length > 0) {
         const reasonMessages: Record<string, string> = {
           no_email: `hay usuarios de ${nextApprovalRole} sin correo registrado`,
           not_configured: "el correo del servidor no está configurado",
@@ -232,13 +255,13 @@ export default function ActaDetailPage() {
           notification_failed: "no se pudo crear la notificación de correo",
         };
         const reasons = [...new Set(failedDeliveries.map((delivery) => reasonMessages[delivery.reason || ""] || "ocurrió un error al enviar el correo"))];
-        toast.warning(`Acta aprobada, pero no llegó el correo a ${nextApprovalRole}: ${reasons.join("; ")}.`);
+        toast.warning(`El acta quedó pendiente de revisión por ${nextApprovalRole}, pero no se pudo enviar el correo: ${reasons.join("; ")}.`);
       } else if (nextApprovalRole && !result.emailNotifications?.length) {
-        toast.warning(`Acta aprobada, pero no se encontraron usuarios ${nextApprovalRole} activos para enviar el correo.`);
+        toast.warning(`El acta quedó pendiente de revisión por ${nextApprovalRole}, pero no se encontraron usuarios activos para enviar el correo.`);
       } else {
         toast.success(nextApprovalRole
           ? `Acta aprobada y correo enviado a ${nextApprovalRole}`
-          : paso === "validaciones" ? "Acta finalizada y aprobada" : "Acta aprobada exitosamente");
+          : "Acta aprobada exitosamente");
       }
       setShowApprove(false);
       setApproveComment("");
@@ -550,7 +573,7 @@ export default function ActaDetailPage() {
       </div>
 
       {/* Approve modal */}
-      <Modal open={showApprove} onClose={() => setShowApprove(false)} title={paso === "validaciones" ? "Finalizar Validación" : "Aprobar Acta"} size="sm"
+      <Modal open={showApprove} onClose={() => setShowApprove(false)} title={paso === "validaciones" ? "Finalizar validación final" : "Aprobar Acta"} size="sm"
         footer={
           <>
             <button onClick={() => setShowApprove(false)} className="px-4 py-2 text-sm text-slate-600 hover:text-slate-900 font-medium rounded-lg hover:bg-slate-100">Cancelar</button>

@@ -17,13 +17,15 @@ const STATUS_BADGE: Record<UserStatus, { label: string; variant: "success" | "wa
   rechazado: { label: "Rechazado", variant: "error" },
 };
 
+const USER_ROLES = Object.keys(ROLE_LABELS) as Role[];
+
 export default function UserManagementPage() {
   const { users, solicitudes, updateUser, deleteUser, createUser, approveSolicitud, rejectSolicitud } = useApp();
   const { user: currentUser } = useAuth();
   const isGlobalAdmin = currentUser?.rol === "admin_global";
 
   const [search, setSearch] = useState("");
-  const [rolFilter, setRolFilter] = useState<Role | "">("");
+  const [rolFilter, setRolFilter] = useState<Role>("solicitante");
   const [statusFilter, setStatusFilter] = useState<UserStatus | "">("");
   const [tab, setTab] = useState<"users" | "requests">("users");
   const [editUser, setEditUser] = useState<User | null>(null);
@@ -38,7 +40,7 @@ export default function UserManagementPage() {
   const filtered = users.filter((u) => {
     const q = search.toLowerCase();
     const matchSearch = !q || u.username.toLowerCase().includes(q) || u.nombre.toLowerCase().includes(q) || (u.email || "").toLowerCase().includes(q) || u.area.toLowerCase().includes(q);
-    return matchSearch && (!rolFilter || u.rol === rolFilter) && (!statusFilter || u.status === statusFilter);
+    return matchSearch && u.rol === rolFilter && (!statusFilter || u.status === statusFilter);
   });
 
   const pendingSolicitudes = solicitudes.filter((s) => s.status === "pendiente");
@@ -49,7 +51,7 @@ export default function UserManagementPage() {
     setSaving(true);
     try {
       if (editUser) {
-        await updateUser(editUser.id, { nombre: form.nombre, area: form.area, rol: form.rol, email: form.email, status: form.status });
+        await updateUser(editUser.id, { username: form.username, nombre: form.nombre, area: form.area, rol: form.rol, email: form.email, status: form.status });
         toast.success("Usuario actualizado");
       } else {
         await createUser({ username: form.username, password: form.password, nombre: form.nombre, area: form.area, rol: form.rol, email: form.email || undefined, status: form.status });
@@ -151,10 +153,6 @@ export default function UserManagementPage() {
               <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar usuario, nombre, correo..."
                 className="pl-8 pr-4 py-2 text-sm border border-slate-300 rounded-lg w-full focus:outline-none focus:ring-2 focus:ring-blue-500" />
             </div>
-            <select value={rolFilter} onChange={(e) => setRolFilter(e.target.value as Role | "")} className="px-3 py-2 text-sm border border-slate-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-500">
-              <option value="">Todos los roles</option>
-              {Object.entries(ROLE_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-            </select>
             <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as UserStatus | "")} className="px-3 py-2 text-sm border border-slate-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-500">
               <option value="">Todos los estados</option>
               <option value="activo">Activo</option>
@@ -163,7 +161,31 @@ export default function UserManagementPage() {
             </select>
           </div>
 
-          <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+          <div role="tablist" aria-label="Filtrar usuarios por rol" className="flex gap-1 overflow-x-auto border-b border-slate-200">
+            {USER_ROLES.map((role) => {
+              const count = users.filter((user) => user.rol === role).length;
+              return (
+                <button
+                  key={role}
+                  id={`users-role-tab-${role}`}
+                  type="button"
+                  role="tab"
+                  aria-selected={rolFilter === role}
+                  aria-controls="users-role-panel"
+                  onClick={() => setRolFilter(role)}
+                  className={`shrink-0 border-b-2 px-4 py-2.5 text-sm font-medium transition-colors ${
+                    rolFilter === role
+                      ? "border-blue-700 text-blue-700"
+                      : "border-transparent text-slate-500 hover:text-slate-700"
+                  }`}
+                >
+                  {ROLE_LABELS[role]} <span className="text-xs text-slate-400">({count})</span>
+                </button>
+              );
+            })}
+          </div>
+
+          <div id="users-role-panel" role="tabpanel" aria-labelledby={`users-role-tab-${rolFilter}`} className="bg-white rounded-xl border border-slate-200 overflow-hidden">
             {filtered.length === 0 ? (
               <EmptyState icon={<Users size={48} />} title="No se encontraron usuarios" />
             ) : (
@@ -289,7 +311,7 @@ export default function UserManagementPage() {
             </div>
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">Usuario *</label>
-              <input value={form.username} onChange={(e) => setForm((p) => ({ ...p, username: e.target.value }))} disabled={!!editUser} className={`w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${editUser ? "border-blue-200 bg-blue-50 text-blue-800 font-medium cursor-not-allowed" : "border-slate-300"}`} />
+              <input value={form.username} onChange={(e) => setForm((p) => ({ ...p, username: e.target.value }))} autoComplete="username" className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
             </div>
             {!editUser && (
               <div>

@@ -1,114 +1,58 @@
-# Documentación completa del proyecto — Destrucción Gestión
+# Documentación técnica y funcional
 
-## 1. Introducción
+## Sistema de Gestión de Actas de Destrucción
 
-Este proyecto corresponde a una aplicación web para la gestión de actas de destrucción, diseñada para apoyar procesos operativos, administrativos, de aprobación y seguimiento dentro de una organización. La solución está compuesta por un frontend en React + Vite y un backend en Node.js + Express con SQL Server como motor de persistencia.
+Este documento describe las funcionalidades, arquitectura, configuración y operación que están implementadas actualmente en el repositorio. Cuando una capacidad está incompleta o no está conectada, se indica explícitamente para no confundirla con una función disponible.
 
-El sistema permite:
+## 1. Propósito y alcance
 
-- Registrar y consultar actas de destrucción
-- Gestionar aprobaciones por rol y área funcional
-- Administrar usuarios, permisos y solicitudes de acceso
-- Mantener maestros como CECOs e INVIMA
-- Visualizar dashboards, reportes y alertas
-- Enviar notificaciones internas y correos automáticos
-- Seguir la trazabilidad de cada proceso por historial y estado
+La aplicación web centraliza el registro y seguimiento de actas de destrucción de materiales. Incluye módulos para autenticación, creación y consulta de actas, aprobaciones, usuarios, solicitudes de registro, catálogos de CECO e INVIMA, notificaciones, búsqueda y reportes.
 
-El proyecto está orientado a un entorno corporativo y utiliza autenticación con JWT, control de acceso por roles y una experiencia visual moderna con Tailwind CSS.
+La solución tiene dos componentes:
 
----
+- **Frontend:** aplicación React que presenta los módulos y consume la API.
+- **Backend:** API REST con Express que aplica operaciones de negocio y persiste información en SQL Server.
 
-## 2. Objetivo del sistema
+El código también contiene una tabla y un router para códigos SAP. Aunque el router existe en `backend/src/routes/sap.js`, actualmente no está montado en `backend/src/server.js`; por eso no se documenta como endpoint operativo.
 
-El objetivo principal es centralizar la gestión de actas de destrucción dentro de un flujo estructurado que permita:
+## 2. Tecnologías y herramientas
 
-1. Capturar la información necesaria del proceso de destrucción.
-2. Validar la solicitud conforme a reglas internas y roles definidos.
-3. Seguir la aprobación por áreas como costos, HSE, planeación y administración.
-4. Mantener un historial completo para auditoría y trazabilidad.
-5. Acceder a métricas y reportes para seguimiento operativo y análisis.
+| Área | Tecnología |
+|---|---|
+| Interfaz | React 19, TypeScript y React Router |
+| Desarrollo y build web | Vite 8 |
+| Estilos | Tailwind CSS v4 |
+| Formularios y validación | React Hook Form y Zod |
+| Gráficos y animaciones | Recharts y Framer Motion |
+| Iconos y mensajes | Lucide React y Sonner |
+| API | Node.js, Express 4 y JavaScript ES modules |
+| Persistencia | Microsoft SQL Server mediante `mssql` |
+| Autenticación | JWT y bcryptjs |
+| Correo | Nodemailer |
+| Importación de hojas de cálculo | `xlsx` |
+| Administrador de paquetes configurado | pnpm |
+| Formateador | oxfmt |
 
----
+Las versiones declaradas y los comandos se encuentran en los `package.json` de la raíz y de `backend/`. `.mise.toml` especifica Node.js 22 y pnpm 10.34.3.
 
-## 3. Stack tecnológico
-
-### Frontend
-- React 19
-- React Router
-- TypeScript
-- Vite
-- Tailwind CSS v4
-- Framer Motion
-- Recharts
-- Sonner
-- Lucide React
-- Zod + React Hook Form
-
-### Backend
-- Node.js
-- Express
-- SQL Server
-- JWT
-- bcryptjs
-- CORS
-- Nodemailer
-- XLSX
-- UUID
-
-### Herramientas de desarrollo
-- pnpm
-- Vite
-- Oxfmt
-- nodemon
-
----
-
-## 4. Arquitectura general
-
-La aplicación sigue una arquitectura cliente-servidor con separación clara de responsabilidades:
-
-- Frontend: se encarga de la interfaz, navegación, formularios, validaciones y consumo de servicios.
-- Backend: expone una API REST, valida autenticación y autorización, procesa reglas de negocio y conecta con SQL Server.
-- Base de datos: almacena usuarios, actas, aprobaciones, notificaciones, maestros y solicitudes.
-
-El flujo general es:
-
-1. El usuario accede a la aplicación desde el frontend.
-2. Se autentica mediante la API del backend.
-3. El backend valida credenciales y emite un JWT.
-4. El frontend usa el token para consumir endpoints protegidos.
-5. Las operaciones de negocio se ejecutan en backend y se persisten en SQL Server.
-6. Las notificaciones y aprobaciones se reflejan en la UI y se registran en historial.
-
----
-
-## 5. Estructura del proyecto
+## 3. Estructura del repositorio
 
 ```text
-destruccion-gestion/
-├── AGENTS.md
+.
 ├── README.md
 ├── INICIO_RAPIDO.md
-├── TODO_TASKS.md
-├── index.html
 ├── package.json
-├── pnpm-lock.yaml
 ├── vite.config.ts
-├── tsconfig.json
 ├── src/
 │   ├── App.tsx
 │   ├── main.tsx
 │   ├── routes.tsx
-│   ├── index.css
-│   ├── assets/
-│   ├── components/
-│   │   ├── layout/
-│   │   └── ui/
 │   ├── context/
 │   │   ├── AppContext.tsx
 │   │   └── AuthContext.tsx
-│   ├── constants/
-│   ├── data/
+│   ├── components/
+│   │   ├── layout/
+│   │   └── ui/
 │   ├── pages/
 │   │   ├── actas/
 │   │   ├── auth/
@@ -119,376 +63,367 @@ destruccion-gestion/
 │   │   ├── reports/
 │   │   ├── search/
 │   │   └── users/
-│   ├── services/
+│   ├── services/api.ts
 │   └── types/
 ├── backend/
 │   ├── package.json
-│   ├── pnpm-lock.yaml
-│   ├── README.md
+│   ├── .env.example
 │   └── src/
 │       ├── server.js
-│       ├── seed.js
-│       ├── importZmm059.js
 │       ├── controllers/
 │       ├── database/
 │       ├── middleware/
 │       ├── routes/
 │       └── services/
-├── docs/
-│   ├── COMO_SE_HIZO_EL_PROYECTO.md
-│   ├── DOCUMENTACION_PROYECTO.md
-│   └── DOCUMENTACION_COMPLETA_PROYECTO.md
-└── public/
+└── docs/
+    ├── COMO_SE_HIZO_EL_PROYECTO.md
+    ├── DOCUMENTACION_PROYECTO.md
+    └── DOCUMENTACION_COMPLETA_PROYECTO.md
 ```
 
-### Descripción de carpetas clave
+### Archivos principales
 
-#### Frontend
-- `src/App.tsx`: inicializa la aplicación, tema y splash screen.
-- `src/routes.tsx`: configuración central de rutas.
-- `src/components/layout/`: estructura general de navegación y layout.
-- `src/context/`: estado de autenticación y del negocio.
-- `src/pages/`: pantallas principales del sistema.
-- `src/services/api.ts`: centralización del consumo a backend.
-- `src/types/`: modelos y tipos de datos.
+- `src/main.tsx`: monta la aplicación React y carga los estilos globales.
+- `src/App.tsx`: combina los proveedores de autenticación y estado, y configura el tema inicial.
+- `src/routes.tsx`: define las rutas de las páginas.
+- `src/context/AuthContext.tsx`: administra el usuario, token, login, cierre de sesión y renovación de sesión.
+- `src/context/AppContext.tsx`: centraliza la carga y actualización del estado funcional del frontend.
+- `src/services/api.ts`: centraliza las solicitudes HTTP al backend.
+- `src/types/index.ts`: define los modelos y tipos usados por la interfaz.
+- `backend/src/server.js`: configura Express, CORS, health check y montaje de rutas; conecta a la base de datos antes de escuchar.
+- `backend/src/database/connection.js`: configura el pool de SQL Server.
+- `backend/src/database/schema.js`: crea tablas y aplica ajustes de esquema al iniciar.
+- `backend/src/middleware/auth.js`: verifica tokens, estado activo y roles en las rutas que lo usan.
+- `backend/src/services/emailService.js`: gestiona el envío de correo.
 
-#### Backend
-- `backend/src/server.js`: arranque del servidor y configuración principal.
-- `backend/src/routes/`: endpoints REST por dominio.
-- `backend/src/controllers/`: lógica de cada entidad.
-- `backend/src/database/`: conexión y esquema de base de datos.
-- `backend/src/middleware/`: autenticación y validaciones diversas.
-- `backend/src/services/`: servicios transversales como correo.
+## 4. Módulos funcionales
 
----
+| Módulo | Ruta de interfaz | Función |
+|---|---|---|
+| Inicio de sesión | `/login` | Autenticación con usuario y contraseña; puede ofrecer acceso de prueba si el backend lo habilita. |
+| Registro | `/registro` | Envía una solicitud de registro para aprobación. |
+| Dashboard | `/dashboard` | Resumen e indicadores principales. |
+| Actas | `/actas` | Consulta de actas. |
+| Crear acta | `/actas/nueva` | Captura un borrador/acta nueva. |
+| Detalle de acta | `/actas/:id` | Consulta el detalle, aprobaciones e historial de un acta. |
+| Editar acta | `/actas/:id/editar` | Reutiliza el formulario de creación en modo edición. |
+| Aprobaciones | `/aprobaciones` | Revisión de pendientes según el rol y el paso asignado. |
+| Usuarios | `/usuarios` | Administración de usuarios. |
+| CECOs | `/maestros/cecos` | Consulta y mantenimiento del catálogo de centros de costo. |
+| INVIMA | `/maestros/invima` | Consulta y mantenimiento del catálogo de productos/registros INVIMA. |
+| Reportes | `/reportes` | Indicadores y visualizaciones. |
+| Búsqueda | `/busqueda` | Búsqueda de información del sistema. |
+| Notificaciones | `/notificaciones` | Consulta y gestión de notificaciones del usuario. |
+| Perfil | `/perfil` | Consulta o edición de información del perfil. |
 
-## 6. Roles y permisos
+La ruta `/` redirige a `/dashboard`; las rutas no reconocidas también redirigen allí. `AppLayout` contiene la navegación de la aplicación. El router define las páginas, pero no incluye por sí mismo una guarda de autenticación; las restricciones de API se aplican en el backend según cada ruta.
 
-El sistema contempla varios roles con responsabilidades diferenciadas:
+## 5. Roles
 
-- Administrador
-- Solicitante
-- Aprobador de área
-- Costos (se elimnara del proceso)
-- HSE
-- Planeación
+Los roles tipados en el frontend son:
 
-La navegación y permisos se adaptan al tipo de usuario autenticado. En el frontend, la barra lateral y los módulos visibles se filtran según el rol. En el backend, se validan permisos por ruta mediante middleware de autorización.
+- `administrador`
+- `admin_global`
+- `solicitante`
+- `aprobador_area`
+- `costos`
+- `hse`
+- `validaciones`
+- `planeacion`
+- `lab_calidad`
 
-Ejemplos de nivel de acceso:
+El backend normaliza algunos alias: `admin` se interpreta como `administrador`; `administrador_global` y `global_admin` se interpretan como `admin_global`. Los endpoints que requieren rol vuelven a comprobar que la cuenta exista y esté activa.
 
-- Solicitante: crea y consulta actas propias o asignadas.
-- Aprobador de área: revisa actas y aprueba/rechaza según su ámbito.
-- Costos: 
-- HSE: valida cumplimiento de seguridad y salud.
-- Planeación: administra maestros de planeación y productos INVIMA.
-- Administrador: controla usuarios, configuración y supervisión general de todo el sistema.
+La navegación puede mostrar módulos de acuerdo con el rol, pero la autorización efectiva debe considerarse únicamente donde el backend usa `requireRole`. La matriz de la sección de API describe las restricciones registradas en las rutas.
 
----
+## 6. Flujo de negocio de actas
 
-## 7. Flujo de negocio principal
+1. Un usuario inicia sesión y obtiene un JWT.
+2. El solicitante crea el acta y puede conservarla como borrador.
+3. Al enviarla, el backend inicia los pasos de aprobación aplicables y registra cambios en el historial.
+4. Los aprobadores actúan sobre el paso que tienen asignado. El backend comprueba rol y, cuando aplica, que el usuario corresponda al aprobador asignado.
+5. Las decisiones actualizan estado/aprobación y pueden generar notificaciones internas y correos.
+6. Una devolución permite solicitar ajustes; el rechazo finaliza el flujo como rechazada.
 
-### 7.1 Inicio de sesión
+Los estados reconocidos por los tipos del frontend son:
 
-El usuario ingresa sus credenciales en la pantalla `LoginPage`. El backend valida email/contraseña y devuelve un token JWT. El frontend guarda la sesión en el contexto de autenticación y redirige al usuario al dashboard.
+`borrador`, `creada`, `enviada`, `pendiente_aprobacion_material`, `pendiente_aprobacion_area`, `pendiente_costos`, `pendiente_hse`, `pendiente_validaciones`, `devuelta_ajustes`, `rechazada`, `aprobada` y `cerrada`.
 
-### 7.2 Creación de acta
+El flujo vigente se configura en el controlador de actas y el esquema de base de datos. En el envío se inician pasos de aprobación de materiales, área y HSE; costos y validaciones pueden marcarse como `no_aplica` según la operación. El esquema también migra actas antiguas de `pendiente_aprobacion_material` a `pendiente_aprobacion_area` y elimina aprobaciones del paso `material_costos`. Antes de desplegar cambios de esquema en una base con datos reales, realizar respaldo y validar las migraciones.
 
-Un usuario con rol solicitante puede registrar una acta nueva. El proceso incluye:
+## 7. API REST
 
-- selección del solicitante
-- clasificación de la acta
-- datos del producto o material
-- motivos y descripción de la destrucción
-- validación de CECOs, INVIMA u otros datos maestros
-- envío a proceso de aprobación
-
-### 7.3 Estados de acta
-
-Las actas pueden transitar por distintos estados, por ejemplo:
-
-- borrador
-- enviada
-- pendiente_aprobacion_area
-- pendiente_costos
-- pendiente_hse
-- aprobada
-- rechazada
-- devuelta_ajustes
-
-### 7.4 Aprobaciones
-
-El flujo de aprobación no es lineal siempre, sino que depende del tipo de acta y de los roles implicados. Un acta puede requerir validaciones de varios actores antes de quedar finalizada. El sistema registra cada movimiento en historial y notifica a los responsables.
-
-### 7.5 Notificaciones
-
-El sistema mantiene un registro de notificaciones para cada usuario, además de poder enviar correos corporativos según la configuración SMTP. Cada evento relevante puede disparar notificaciones, como:
-
-- acta creada
-- acta enviada
-- aprobación o rechazo
-- devolución por ajustes
-- tareas pendientes
-
----
-
-## 8. API REST del backend
-
-El backend expone una API bajo el prefijo `/api`.
+La base de la API es `/api`. El backend escucha en el puerto `3004` por defecto y publica `GET /api/health`.
 
 ### Autenticación
-- `POST /api/auth/login` — inicio de sesión
-- `POST /api/auth/register` — registro de usuario
 
-### Usuarios
-- `GET /api/users` — listar usuarios
-- `POST /api/users` — crear usuario
-- `GET /api/users/:id` — consultar usuario
-- `PUT /api/users/:id` — actualizar usuario
-- `DELETE /api/users/:id` — eliminar usuario
-- `POST /api/users/:id/test-email` — enviar correo de prueba
+| Método | Endpoint | Acceso registrado | Descripción |
+|---|---|---|---|
+| GET | `/api/auth/users` | Sin token | Devuelve los nombres de usuario activos y si está habilitado el login de desarrollo local. |
+| POST | `/api/auth/dev-login` | Solo desarrollo, flag habilitado y conexión loopback | Login de prueba sin contraseña. No se habilita en producción. |
+| POST | `/api/auth/login` | Sin token | Valida usuario/contraseña y devuelve JWT y datos del usuario. |
+| POST | `/api/auth/refresh` | Requiere token en la cabecera HTTP de autorización con esquema Bearer | Renueva token y datos desde el usuario activo en la base de datos. |
+| POST | `/api/auth/register` | Sin token | Crea una solicitud de registro pendiente. |
 
 ### Actas
-- `GET /api/actas` — listar actas
-- `POST /api/actas` — crear acta
-- `GET /api/actas/:id` — consultar acta por id
-- `PUT /api/actas/:id` — actualizar acta
-- `DELETE /api/actas/:id` — eliminar acta
-- `POST /api/actas/:id/submit` — enviar acta
-- `POST /api/actas/:id/approve` — aprobar acta
-- `POST /api/actas/:id/reject` — rechazar acta
-- `POST /api/actas/:id/return` — devolver para ajustes
+
+| Método | Endpoint | Roles requeridos | Descripción |
+|---|---|---|---|
+| GET | `/api/actas` | Todos los roles funcionales | Lista actas. |
+| GET | `/api/actas/:id` | Todos los roles funcionales | Obtiene el detalle de un acta. |
+| POST | `/api/actas` | `admin_global`, `solicitante` | Crea un acta. |
+| PUT | `/api/actas/:id` | `admin_global`, `solicitante`, `aprobador_area`, `hse`, `planeacion` | Actualiza un acta. |
+| DELETE | `/api/actas/:id` | `admin_global` | Elimina un acta. |
+| POST | `/api/actas/:id/submit` | `solicitante` | Envía el acta al flujo de revisión. |
+| POST | `/api/actas/:id/approve` | `aprobador_area`, `costos`, `hse`, `validaciones`, `planeacion`, `lab_calidad` | Aprueba el paso correspondiente. |
+| POST | `/api/actas/:id/reject` | `aprobador_area`, `costos`, `hse`, `planeacion`, `lab_calidad` | Rechaza el acta. |
+| POST | `/api/actas/:id/return` | `aprobador_area`, `costos`, `hse`, `validaciones`, `planeacion`, `lab_calidad` | Devuelve el acta para ajustes. |
+| PATCH | `/api/actas/:id/validation-weight` | `validaciones` | Actualiza la ponderación/dato de validación. |
+| POST | `/api/actas/:id/notify-hse` | `administrador`, `admin_global`, `aprobador_area` | Reenvía aviso al equipo HSE. |
+| POST | `/api/actas/:id/notify-area-approver` | `administrador`, `admin_global`, `aprobador_area`, `hse` | Reenvía aviso al aprobador de área. |
+
+Los roles de consulta son `administrador`, `admin_global`, `solicitante`, `aprobador_area`, `costos`, `hse`, `validaciones`, `planeacion` y `lab_calidad`.
+
+### Usuarios
+
+Todos los endpoints de usuarios listados requieren `administrador` o `admin_global`.
+
+| Método | Endpoint | Descripción |
+|---|---|---|
+| GET | `/api/users` | Lista usuarios. |
+| GET | `/api/users/:id` | Consulta un usuario. |
+| POST | `/api/users` | Crea un usuario. |
+| PUT | `/api/users/:id` | Actualiza un usuario. |
+| DELETE | `/api/users/:id` | Elimina un usuario. |
+| POST | `/api/users/:id/test-email` | Envía un correo de prueba. |
+
+### Solicitudes de registro
+
+| Método | Endpoint | Acceso registrado |
+|---|---|---|
+| POST | `/api/solicitudes` | Sin middleware de rol en la ruta |
+| GET | `/api/solicitudes` | Sin middleware de rol en la ruta |
+| POST | `/api/solicitudes/:id/approve` | Sin middleware de rol en la ruta |
+| POST | `/api/solicitudes/:id/reject` | Sin middleware de rol en la ruta |
+
+El registro público del usuario también se realiza con `POST /api/auth/register`. Verificar las restricciones de acceso de estas operaciones antes de exponer el backend a una red no confiable.
 
 ### Notificaciones
-- `POST /api/notifications` — crear notificación
-- `GET /api/notifications/user/:userId` — listar notificaciones de usuario
-- `PUT /api/notifications/:id/read` — marcar notificación como leída
-- `PUT /api/notifications/user/:userId/read-all` — marcar todas como leídas
-- `DELETE /api/notifications/:id` — eliminar notificación
 
-### Solicitudes
-- `POST /api/solicitudes` — crear solicitud
-- `GET /api/solicitudes` — listar solicitudes
-- `POST /api/solicitudes/:id/approve` — aprobar solicitud
-- `POST /api/solicitudes/:id/reject` — rechazar solicitud
+| Método | Endpoint | Acceso registrado |
+|---|---|---|
+| GET | `/api/notifications/user/:userId` | Sin middleware de rol en la ruta |
+| POST | `/api/notifications` | Sin middleware de rol en la ruta |
+| PUT | `/api/notifications/:id/read` | Sin middleware de rol en la ruta |
+| PUT | `/api/notifications/user/:userId/read-all` | Sin middleware de rol en la ruta |
+| DELETE | `/api/notifications/:id` | Sin middleware de rol en la ruta |
 
-### Maestros
-- `GET /api/cecos` — consultar CECOs
-- `POST /api/cecos` — crear CECO
-- `PUT /api/cecos/:id` — actualizar CECO
-- `DELETE /api/cecos/:id` — eliminar CECO
+### Catálogos
 
-- `GET /api/invima` — consultar productos INVIMA
-- `POST /api/invima` — crear producto INVIMA
-- `PUT /api/invima/:id` — actualizar producto
-- `DELETE /api/invima/:id` — eliminar producto
+| Método | Endpoint | Roles requeridos | Descripción |
+|---|---|---|---|
+| GET | `/api/cecos` | Sin middleware de rol en la ruta | Lista centros de costo. |
+| POST | `/api/cecos` | `costos` | Crea un CECO. |
+| PUT | `/api/cecos/:id` | `costos` | Actualiza un CECO. |
+| DELETE | `/api/cecos/:id` | `costos` | Elimina un CECO. |
+| GET | `/api/invima` | Sin middleware de rol en la ruta | Lista productos INVIMA. |
+| POST | `/api/invima` | `planeacion` | Crea un producto INVIMA. |
+| PUT | `/api/invima/:id` | `planeacion` | Actualiza un producto INVIMA. |
+| DELETE | `/api/invima/:id` | `planeacion` | Elimina un producto INVIMA. |
 
-### Health check
-- `GET /api/health` — verificar estado del backend
+`GET /api/health` es un endpoint de estado y devuelve un JSON con el estado del backend. Aunque hay un router para `/api/sap`, el servidor no lo monta; sus rutas no están disponibles mediante este servidor en su estado actual.
 
----
+Las solicitudes HTTP se realizan desde `src/services/api.ts`. En las llamadas autenticadas, el token se envía en la cabecera HTTP de autorización con esquema Bearer.
 
-## 9. Modelo de datos
+## 8. Modelo de datos
 
-La capa de datos está construida sobre SQL Server y contiene tablas clave como:
+La base se inicializa en `backend/src/database/schema.js`. El backend crea las tablas que no existen y agrega algunas columnas faltantes a tablas existentes.
 
-- `users` — usuarios del sistema
-- `actas` — actas de destrucción
-- `acta_historial` — historial de cambios y estados
-- `acta_aprobaciones` — aprobaciones por rol o área
-- `notifications` — notificaciones de usuario
-- `solicitudes` — registros pendientes o solicitudes de acceso
-- `invima_products` — productos y catalogo INVIMA
-- `cecos` — centros de costo
+| Tabla | Propósito y datos representativos |
+|---|---|
+| `users` | Cuenta, nombre de usuario, contraseña cifrada, nombre, email, área, rol, estado y fechas. |
+| `actas` | Consecutivo, solicitante, estado, empresa, área, fechas, causal, CECO, datos del material, observaciones, adjuntos y referencias a catálogos. |
+| `acta_materiales` | Detalle de materiales asociados: descripción, SAP, lote, orden, clasificación, cantidades, peso y costos. |
+| `acta_historial` | Usuario, fecha/hora, equipo y acción registrada para un acta. |
+| `acta_aprobaciones` | Paso, estado, aprobador, comentario, motivo y ajustes de cada aprobación. |
+| `notifications` | Destinatario, título, mensaje, tipo, lectura, fecha y referencia opcional al acta. |
+| `solicitudes` | Datos del registro solicitado, rol solicitado, estado y fecha. |
+| `invima_products` | Catálogo de productos y datos regulatorios, empresa, estado, presentación y atributos de producto. |
+| `sap_codes` | Códigos SAP relacionados opcionalmente con un producto INVIMA. El router API asociado no está montado actualmente. |
+| `cecos` | Empresa, código CECO, denominación, responsable, departamento, tipo de costo, moneda y estado. |
 
-El backend inicializa y prepara la base de datos mediante un esquema y, cuando es necesario, via scripts de seed.
+Relaciones declaradas por el esquema:
 
----
+- Un usuario puede ser solicitante de actas; `actas.solicitanteId` referencia `users.id`.
+- El historial, los materiales y las aprobaciones referencian `actas.id`.
+- Las notificaciones referencian `users.id`.
+- Los códigos SAP pueden referenciar `invima_products.id`.
+- `cecos` tiene identificador y restricción única por pareja `empresaCode`/`ceco`.
 
-## 10. Seguridad
+Las tablas de historial y aprobaciones usan identificadores de acta, pero el esquema no declara una clave foránea de notificación desde `notifications.actaId`. Los detalles completos y tipos de columnas se pueden consultar en el archivo de esquema.
 
-La seguridad del proyecto contempla varios mecanismos:
+## 9. Configuración por entorno
 
-- Autenticación con JWT
-- Cifrado de contraseñas con `bcryptjs`
-- Validación de roles para acceso a módulos y rutas
-- Configuración de CORS para orígenes permitidos
-- Variables de entorno para credenciales y configuración sensible
-- Manejo de errores centralizado en el backend
-
-Los accesos críticos se protegen con middleware de autorización y validación del token del usuario.
-
----
-
-## 11. Configuración de entorno
+No copiar secretos al repositorio ni a esta documentación. Crear/configurar los archivos de entorno localmente y mantener contraseñas, tokens y credenciales bajo gestión segura.
 
 ### Frontend
-El frontend usa una variable de entorno para la URL del backend:
+
+El servicio acepta, en este orden, `VITE_API_BASE_URL` o `VITE_API_URL`. Si no se define ninguna, usa la dirección del host actual con el puerto `3004` y el prefijo `/api`.
+
+Ejemplo para desarrollo:
 
 ```env
 VITE_API_URL=http://localhost:3004/api
 ```
 
+Las variables `VITE_*` se incluyen en el bundle web; no deben contener claves secretas.
+
 ### Backend
-La carpeta `backend` requiere un archivo `.env` con la configuración propia del entorno, por ejemplo:
 
-```env
-PORT=3004
-CORS_ORIGIN=http://localhost:5173
-DB_SERVER=localhost
-DB_DATABASE=destruccion_gestion
-DB_USER=sa
-DB_PASSWORD=TuPassword
-DB_PORT=1433
-JWT_SECRET=tu_clave_secreta
-SMTP_HOST=smtp.corporativo.com
-SMTP_PORT=587
-SMTP_USER=usuario@empresa.com
-SMTP_PASS=tu_contraseña
-```
+El backend carga `backend/.env` mediante dotenv. Las variables reconocidas incluyen:
 
-> Si la configuración SMTP no existe o falla, el sistema conserva la notificación en la aplicación y no bloquea el flujo de aprobación.
+| Variable | Uso |
+|---|---|
+| `PORT` | Puerto HTTP; valor predeterminado `3004`. |
+| `CORS_ORIGIN` | Orígenes permitidos adicionales; acepta una lista separada por comas. |
+| `DB_HOST` / `DB_SERVER` | Host de SQL Server; predeterminado `localhost`. |
+| `DB_PORT` | Puerto SQL Server; predeterminado `1433`. |
+| `DB_NAME` / `DB_DATABASE` | Base de datos; predeterminado `DestruccionDB`. |
+| `DB_USER` | Usuario de la base; predeterminado `sa`. |
+| `DB_PASSWORD` | Contraseña de SQL Server. |
+| `DB_ENCRYPT` | Habilita cifrado de conexión (`true`, `1` o `yes`). |
+| `DB_TRUST_CERT` | Confía en el certificado del servidor; predeterminado `true`. |
+| `DB_CONNECTION_TIMEOUT` | Tiempo de conexión en ms; predeterminado `15000`. |
+| `DB_REQUEST_TIMEOUT` | Tiempo máximo de consulta en ms; predeterminado `30000`. |
+| `DB_POOL_MAX` | Máximo de conexiones del pool; predeterminado `30`. |
+| `JWT_SECRET` | Secreto de firma JWT. Configurar un valor fuerte y privado. |
+| `JWT_EXPIRY` | Duración de JWT; predeterminado `7d`. |
+| `NODE_ENV` | Entorno; el login de desarrollo no funciona en `production`. |
+| `ENABLE_DEV_LOGIN` | Solo el valor `true` permite login de prueba, además de requerir entorno no productivo y conexión loopback. |
+| `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE` | Servidor y modo de conexión SMTP. |
+| `SMTP_USER`, `SMTP_PASS` | Credenciales SMTP. |
+| `MAIL_FROM` | Remitente visible; si se omite, se usa `SMTP_USER`. |
+| `APP_BASE_URL` | Dirección base de la aplicación usada en comunicaciones. |
 
----
+`backend/.env.example` contiene una plantilla de correo y valores de ejemplo de puerto/origen. La conexión a SQL Server y el JWT deben configurarse según el entorno. El código conserva un secreto JWT de fallback para desarrollo; definir `JWT_SECRET` explícitamente es requisito operativo para despliegues.
 
-## 12. Instalación y ejecución
+### CORS
 
-### Requisitos previos
+El servidor permite los orígenes configurados en `CORS_ORIGIN` y una lista de orígenes locales/de desarrollo. Además, actualmente acepta orígenes HTTP con dirección IPv4 y puerto `8443`. Revisar y limitar esa política conforme a los dominios reales de cada ambiente.
 
-- Node.js
-- npm
-- SQL Server disponible
-- acceso a la base de datos configurada
+## 10. Instalación y ejecución
+
+### Requisitos
+
+- Node.js 22 y pnpm 10.34.3, de acuerdo con `.mise.toml`.
+- SQL Server accesible desde el backend.
+- Variables de entorno del backend configuradas.
 
 ### Frontend
 
+Desde la raíz:
+
 ```bash
-cd destruccion-gestion
-npm install
-npm run dev
+pnpm install
+pnpm run dev
+```
+
+Vite expone el servidor en `0.0.0.0`; la URL local normalmente se muestra en la terminal. Para generar y servir el build:
+
+```bash
+pnpm run build
+pnpm run preview
 ```
 
 ### Backend
 
-```bash
-cd destruccion-gestion/backend
-npm install
-npm run dev
- o 
-npm start
-```
-
-### Producción
+En otra terminal:
 
 ```bash
-cd destruccion-gestion
-npm run build
-npm run preview
+cd backend
+pnpm install
+pnpm run dev
 ```
 
----
+El comando `pnpm start` ejecuta el backend sin modo watch. En el arranque, el servidor conecta a SQL Server, inicializa/ajusta el esquema y después empieza a escuchar.
 
-## 13. Ejecución del backend y base de datos
+### Scripts disponibles
 
-El backend se levanta en el puerto 3004 por defecto. En la inicialización, ejecuta:
+| Directorio | Comando | Propósito |
+|---|---|---|
+| raíz | `pnpm dev` | Servidor Vite de desarrollo. |
+| raíz | `pnpm build` | Build de producción del frontend. |
+| raíz | `pnpm preview` | Vista previa local del build. |
+| raíz | `pnpm format` | Formatea con oxfmt. |
+| `backend/` | `pnpm dev` | Backend con reinicio al detectar cambios. |
+| `backend/` | `pnpm start` | Backend normal. |
+| `backend/` | `pnpm setup-db` | Ejecuta `src/seed.js` para datos de inicialización. |
+| `backend/` | `pnpm import-zmm059` | Ejecuta el importador de la hoja ZMM059. |
 
-1. Conexión a SQL Server
-2. Inicialización del esquema de BD
-3. Arranque del servidor Express
-4. Exposición de endpoints bajo `/api`
+Los scripts de seed e importación deben ejecutarse de forma intencional contra la base correcta. No son necesarios para que el servidor cree las tablas; revisar sus archivos antes de usar datos productivos.
 
-También se incluyen scripts auxiliares como:
+## 11. Persistencia de sesión y presentación
 
-- `pnpm run setup-db` para sembrar datos base
-- `pnpm run import-zmm059` para importar información de referencia
+- El token y el usuario autenticado se guardan en `sessionStorage`, por lo que la sesión se limita a la sesión del navegador/tab.
+- La clave de tema del frontend es `add-theme`; la preferencia se lee desde `localStorage` y puede respetar la preferencia del sistema si no se ha guardado una.
+- La información funcional de actas y usuarios se obtiene del backend; el estado en React sirve para compartir datos entre pantallas.
+- El backend usa JSON con un límite de cuerpo de solicitud de 50 MB.
+- Ciertos correos son opcionales: la falta o falla de SMTP no debería detener el flujo de aprobación; revisar la configuración y los logs para confirmar entregas.
 
----
+## 12. Seguridad y operación
 
-## 14. Experiencia visual y UX
+- Las contraseñas de usuarios se verifican con bcryptjs; el registro cifra la contraseña antes de guardar la solicitud.
+- Las rutas que usan `requireRole` exigen JWT válido, usuario existente y estado activo.
+- La autorización no está aplicada uniformemente a todos los routers: revisar en particular solicitudes, notificaciones y consultas de los catálogos, que actualmente no usan middleware de rol en sus declaraciones de ruta.
+- El secreto JWT de desarrollo por defecto no debe utilizarse en producción.
+- Mantener las credenciales fuera del control de versiones; no incluir valores reales en ejemplos, logs compartidos o documentación.
+- Configurar `CORS_ORIGIN` con orígenes controlados y revisar las reglas adicionales codificadas en el servidor antes del despliegue.
+- Proteger SQL Server con controles de red, credenciales con privilegios mínimos, cifrado cuando corresponda y copias de seguridad.
+- Las inicializaciones de esquema incluyen transformaciones de estados/aprobaciones. Realizar backup y probar una actualización en un entorno de ensayo antes de iniciar una versión sobre datos reales.
+- Los errores del servidor se registran en consola y se responden como JSON; revisar los logs del proceso y la conectividad de SQL Server ante fallas de arranque.
 
-La interfaz presenta una experiencia moderna con:
+## 13. Comprobación y solución de problemas
 
-- layout con sidebar y dashboard
-- cambio de tema claro/oscuro
-- splash screen al iniciar la app
-- navegación con transiciones suaves
-- tarjetas, timelines y gráficos para métricas
-- formularios con validación y mensajes visuales
+### El frontend no conecta con la API
 
-La lógica de tema se conserva en localStorage y el sistema aplica clases `dark` al documento HTML.
+1. Confirmar que el backend está iniciado y que SQL Server está disponible.
+2. Abrir `GET http://localhost:3004/api/health` en el entorno local.
+3. Revisar `VITE_API_URL`/`VITE_API_BASE_URL`, incluyendo el sufijo `/api`.
+4. Revisar la configuración CORS para el origen desde el cual se sirve la interfaz.
 
----
+### Error al iniciar el backend
 
-## 15. Componentes y módulos funcionales del frontend
+- Validar host, puerto, base, usuario y contraseña de SQL Server.
+- Confirmar que la base existe y el usuario tiene permisos para crear/alterar las tablas requeridas.
+- Revisar los mensajes de inicio de `backend/src/database/connection.js` y `backend/src/database/schema.js`.
 
-### Módulos principales
-- `DashboardPage`: vista central con métricas y resumen
-- `ActaListPage`: listado de actas
-- `ActaCreatePage`: creación/edición de actas
-- `ActaDetailPage`: detalle de una acta
-- `AprobacionesPage`: revisión y aprobación de solicitudes
-- `UserManagementPage`: administración de usuarios
-- `CecosPage`: maestros de centros de costo
-- `InvimaPage`: maestros de productos INVIMA
-- `ReportsPage`: reportes y gráficas
-- `SearchPage`: búsqueda general
-- `NotificationsPage`: gestión de notificaciones
-- `ProfilePage`: información del usuario
+### Error 401 o 403
 
-### Layout principal
-- `AppLayout.tsx`: estructura general del sistema autenticado
-- `Header.tsx`: cabecera con acciones y usuario
-- `Sidebar.tsx`: navegación principal según el rol
-- `RouteTransitionShell.tsx`: animación de transiciones de páginas
+- 401 indica token ausente/inválido/expirado o cuenta inactiva.
+- 403 indica que el rol actual no está autorizado para esa operación o que el usuario no tiene asignado el paso correspondiente.
+- Cerrar sesión e iniciar sesión nuevamente si el rol cambió.
 
----
+### Correo no enviado
 
-## 16. Estado actual del proyecto
+- Revisar host, puerto, seguridad, usuario y clave SMTP.
+- Validar el remitente y la política del servidor corporativo.
+- Consultar los logs del backend; la notificación interna puede mantenerse aun cuando falle el correo.
 
-El proyecto presenta una base funcional sólida con una separación clara entre frontend y backend. Ya incluye:
+## 14. Límites y aspectos a confirmar
 
-- autenticación y sesión
-- gestión de usuarios
-- flujo de actas y aprobaciones
-- maestros y notificaciones
-- dashboard y reportes
-- integración con SQL Server
-- configuración de correo de notificaciones
+Estos puntos describen el estado observado en el código; no son promesas de funcionalidad:
 
-La estructura es escalable y está lista para continuar con refinamientos de negocio, validación avanzada y pruebas automáticas.
+1. El router `/api/sap` no está montado en el servidor actual.
+2. Algunas operaciones de solicitudes, notificaciones y lecturas de catálogos no declaran middleware de autenticación/rol en sus rutas.
+3. El router web no incluye un guard global para bloquear páginas por falta de sesión; debe confirmarse el comportamiento de acceso esperado para cada página.
+4. El esquema se inicializa con SQL y también contiene migraciones de compatibilidad/estado. No usar como sustituto de un proceso formal de migración y respaldo.
+5. Los `package.json` no definen scripts de pruebas automatizadas.
+6. Los archivos de hojas de cálculo en la raíz y el importador ZMM059 son insumos de negocio; validar su origen, estructura y tratamiento antes de importar en una base compartida.
 
----
+## 15. Referencias del repositorio
 
-## 17. Buenas prácticas implementadas
-
-- Separación clara entre UI, lógica de negocio y servicios
-- Centralización de llamadas a API en `src/services`
-- Uso de estados globales para contexto de negocio
-- Manejo de configuración vía variables de entorno
-- Persistencia de datos en backend, sin depender de `localStorage` para la información crítica
-- Registro de historial y notificaciones como parte del flujo de aprobación
-
----
-
-## 18. Recomendaciones futuras
-
-1. Implementar pruebas unitarias e integradas para los flujos críticos.
-2. Mejorar la validación de formularios con mensajes específicos por campo.
-3. Añadir paginación y filtros avanzados en listados grandes.
-4. Exportar reportes a Excel o PDF.
-5. Mejorar trazabilidad por auditoría con logs más detallados.
-6. Agregar gestión más granular de permisos por módulo.
-7. Optimizar carga de datos y rendimiento en consultas complejas.
-
----
-
-
-
-## 19. Enlaces útiles
-
-- README del proyecto: `README.md`
-- Documentación técnica previa: `docs/DOCUMENTACION_PROYECTO.md`
-- Documentación de historia del proyecto: `docs/COMO_SE_HIZO_EL_PROYECTO.md`
-- Backend: `backend/README.md`
-
----
+- [README principal](../README.md)
+- [Inicio rápido](../INICIO_RAPIDO.md)
+- [Documentación funcional previa](./DOCUMENTACION_PROYECTO.md)
+- [Historia y decisiones del proyecto](./COMO_SE_HIZO_EL_PROYECTO.md)
+- [Configuración de ejemplo del backend](../backend/.env.example)

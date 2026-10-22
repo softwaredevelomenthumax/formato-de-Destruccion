@@ -233,7 +233,7 @@ const step1Schema = z.object({
   centroCostos: requiredString("Centro de costos").refine((value) => value.trim().length > 0, "Seleccione un centro de costos"),
   cecoId: z.string().optional(),
   fecha: dateStringSchema,
-  responsable: requiredString("Responsable"),
+  responsable: requiredString("Firma corporativa"),
   area: requiredString("Área"),
 });
 const step2Schema = z.object({
@@ -310,7 +310,7 @@ const numberField = (label: string, maxValue: number, integer = false, allowZero
 
 const step3Schema = z.object({
   pesoKg: numberField("Peso", 10000000000000),
-  cantidadUnidades: numberField("Cantidad", 10000000000000, true),
+  cantidadUnidades: numberField("Cantidad", 10000000000000, true, true),
   costoDestruccion: numberField("Costo del material", 10000000000000, false, true),
 });
 
@@ -1228,8 +1228,8 @@ export default function ActaCreatePage() {
                 <input type="text" value={user?.nombre || ""} disabled className="w-full px-3 py-2.5 text-sm border border-slate-200 rounded-lg bg-slate-100 text-slate-500 font-medium cursor-not-allowed pointer-events-none" />
               </div>
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Responsable *</label>
-                <input disabled={isGeneralInfoLocked} {...form1.register("responsable")} placeholder="Nombre del responsable" className="w-full px-3 py-2.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed" />
+                <label className="block text-sm font-medium text-slate-700 mb-1">Firma corporativa *</label>
+                <input disabled={isGeneralInfoLocked} {...form1.register("responsable")} placeholder="Ingrese la firma corporativa" className="w-full px-3 py-2.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed" />
                 <FieldError message={form1.formState.errors.responsable?.message} />
               </div>
               <div>
@@ -1956,7 +1956,7 @@ export default function ActaCreatePage() {
               <Row label="Centro de Costos" value={String(formData.centroCostos || "")} />
               <Row label="Fecha" value={String(formData.fecha || "").slice(0, 10)} />
               <Row label="Solicitante" value={user?.nombre || ""} />
-              <Row label="Responsable" value={String(formData.responsable || "")} />
+              <Row label="Firma corporativa" value={String(formData.responsable || "")} />
               <Row label="Área" value={String(formData.area || "")} />
             </Section>
             <Section title="Información del Material">

@@ -80,7 +80,10 @@ export async function getUserById(req, res) {
 export async function updateUser(req, res) {
   try {
     const { id } = req.params;
-    const { nombre, email, area, rol, status, password } = req.body;
+    const { username, nombre, email, area, rol, status, password } = req.body;
+    if (Object.prototype.hasOwnProperty.call(req.body, 'username') && !username?.trim()) {
+      return res.status(400).json({ error: 'El nombre de usuario es obligatorio' });
+    }
     if (password && req.user.rol !== 'admin_global') {
       return res.status(403).json({ error: 'Solo el administrador global puede cambiar contraseñas' });
     }
@@ -92,15 +95,28 @@ export async function updateUser(req, res) {
     const existing = await pool.request().input('id', id).query('SELECT id FROM users WHERE id = @id');
     if (!existing.recordset[0]) return res.status(404).json({ error: 'Usuario no encontrado' });
 
+    if (Object.prototype.hasOwnProperty.call(req.body, 'username')) {
+      const usernameExists = await pool.request()
+        .input('id', id)
+        .input('username', username.trim())
+        .query(`SELECT id FROM users
+          WHERE id <> @id
+            AND LOWER(LTRIM(RTRIM(username))) = LOWER(@username)`);
+      if (usernameExists.recordset.length > 0) {
+        return res.status(400).json({ error: 'El nombre de usuario ya existe' });
+      }
+    }
+
     const request = pool.request().input('id', id);
     const queryParts = [];
     const addField = (field, value) => {
       if (Object.prototype.hasOwnProperty.call(req.body, field)) {
-        request.input(field, field === 'email' && typeof value === 'string' ? value.trim() || null : value);
+        request.input(field, ['email', 'username'].includes(field) && typeof value === 'string' ? value.trim() || null : value);
         queryParts.push(`${field} = @${field}`);
       }
     };
 
+    addField('username', username);
     addField('nombre', nombre);
     addField('email', email);
     addField('area', area);

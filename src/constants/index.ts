@@ -13,7 +13,7 @@ export const ROLE_LABELS: Record<Role, string> = {
   aprobador_area: "Aprobador de Área",
   costos: "Costos",
   hse: "HSE & S",
-  validaciones: "Validaciones",
+  validaciones: "Validaciones finales",
   planeacion: "Planeación",
   lab_calidad: "Lab-calidad",
 };
@@ -26,7 +26,7 @@ export const ACTA_STATUS_LABELS: Record<ActaStatus, string> = {
   pendiente_aprobacion_area: "Pendiente Aprobación Área",
   pendiente_costos: "Pendiente Costos",
   pendiente_hse: "Pendiente HSE",
-  pendiente_validaciones: "Pendiente de Validaciones",
+  pendiente_validaciones: "Pendiente de Validación final",
   devuelta_ajustes: "Devuelta para Ajustes",
   rechazada: "Rechazada",
   aprobada: "Aprobada",
