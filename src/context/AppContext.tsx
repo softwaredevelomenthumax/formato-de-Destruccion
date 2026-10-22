@@ -30,7 +30,7 @@ interface AppContextType {
   // Users
   createUser: (u: Omit<User, "id" | "createdAt">) => Promise<void>;
   updateUser: (id: string, updates: Partial<User>) => Promise<void>;
-  deleteUser: (id: string) => Promise<boolean>;
+  deleteUser: (id: string) => Promise<number>;
   approveSolicitud: (id: string) => Promise<void>;
   rejectSolicitud: (id: string) => Promise<void>;
   registerSolicitud: (s: Omit<RegistroSolicitud, "id" | "createdAt" | "status"> & { password?: string }) => Promise<void>;
@@ -162,14 +162,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const deleteUser = async (id: string): Promise<boolean> => {
+  const deleteUser = async (id: string): Promise<number> => {
     try {
-      await api.deleteUser(id);
+      const response = await api.deleteUser(id) as { deletedActaIds: string[] };
+      const deletedActaIds = new Set(response.deletedActaIds);
       setUsers((current) => asArray<User>(current).filter((u) => u.id !== id));
-      return true;
+      setActas((current) => asArray<Acta>(current).filter((acta) => !deletedActaIds.has(acta.id)));
+      setNotifications((current) => asArray<Notification>(current).filter(
+        (notification) => notification.userId !== id && !deletedActaIds.has(notification.actaId || ""),
+      ));
+      return deletedActaIds.size;
     } catch (error) {
       console.error("Error eliminando usuario:", error);
-      return false;
+      throw error;
     }
   };
 

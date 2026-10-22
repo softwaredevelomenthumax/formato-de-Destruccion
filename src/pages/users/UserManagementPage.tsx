@@ -44,6 +44,7 @@ export default function UserManagementPage() {
   });
 
   const pendingSolicitudes = solicitudes.filter((s) => s.status === "pendiente");
+  const deleteUserEmail = users.find((user) => user.id === deleteConfirm)?.email;
 
   const handleSaveUser = async () => {
     if (!form.nombre || !form.username || !form.area) { toast.error("Complete todos los campos obligatorios"); return; }
@@ -83,10 +84,14 @@ export default function UserManagementPage() {
   };
 
   const handleDelete = async (id: string) => {
-    const ok = await deleteUser(id);
-    if (ok) toast.success("Usuario eliminado");
-    else toast.error("No se puede eliminar: el usuario tiene actas activas");
-    setDeleteConfirm(null);
+    try {
+      const deletedActas = await deleteUser(id);
+      toast.success(`Se eliminaron el usuario y ${deletedActas} acta${deletedActas === 1 ? "" : "s"} relacionada${deletedActas === 1 ? "" : "s"}`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "No se pudo eliminar el usuario");
+    } finally {
+      setDeleteConfirm(null);
+    }
   };
 
   const openEdit = (u: User) => {
@@ -356,7 +361,7 @@ export default function UserManagementPage() {
       </Modal>
       <ConfirmModal open={!!deleteConfirm} onClose={() => setDeleteConfirm(null)}
         onConfirm={() => deleteConfirm && handleDelete(deleteConfirm)}
-        title="Eliminar usuario" message="¿Está seguro de que desea eliminar este usuario? Esta acción es irreversible."
+        title="Eliminar usuario y actas" message={`Se eliminarán permanentemente este usuario${deleteUserEmail ? ` (${deleteUserEmail})` : ""}, todas sus actas y el historial, materiales, aprobaciones y notificaciones asociados. Esta acción es irreversible.`}
         confirmLabel="Eliminar" danger />
     </div>
   );

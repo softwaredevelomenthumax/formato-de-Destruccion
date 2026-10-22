@@ -2,6 +2,7 @@ import { getPool } from '../database/connection.js';
 import { v4 as uuidv4 } from 'uuid';
 import bcryptjs from 'bcryptjs';
 import { sendNotificationEmail } from '../services/emailService.js';
+import sql from 'mssql';
 
 // Crear usuario
 export async function createUser(req, res) {
@@ -151,28 +152,62 @@ export async function updateUser(req, res) {
 
 // Eliminar usuario
 export async function deleteUser(req, res) {
+  const transaction = new sql.Transaction(getPool());
+  let transactionStarted = false;
+  let transactionCompleted = false;
+
   try {
     const { id } = req.params;
-    const pool = getPool();
+    await transaction.begin();
+    transactionStarted = true;
 
-    // Verificar si tiene actas activas
-    const actasActivas = await pool.request()
-      .input('solicitanteId', id)
-      .query(`
-        SELECT COUNT(*) as count FROM actas 
-        WHERE solicitanteId = @solicitanteId AND status NOT IN ('cerrada', 'rechazada')
-      `);
+    const user = await new sql.Request(transaction)
+      .input('id', id)
+      .query('SELECT id FROM users WITH (UPDLOCK, HOLDLOCK) WHERE id = @id');
 
-    if (actasActivas.recordset[0].count > 0) {
-      return res.status(400).json({ error: 'No se puede eliminar usuario con actas activas' });
+    if (!user.recordset[0]) {
+      await transaction.rollback();
+      transactionCompleted = true;
+      return res.status(404).json({ error: 'Usuario no encontrado' });
     }
 
-    await pool.request()
+    const actas = await new sql.Request(transaction)
       .input('id', id)
-      .query('DELETE FROM users WHERE id = @id');
+      .query('SELECT id FROM actas WITH (UPDLOCK, HOLDLOCK) WHERE solicitanteId = @id');
+    const deletedActaIds = actas.recordset.map((acta) => acta.id);
+    const request = () => new sql.Request(transaction).input('id', id);
 
-    res.json({ message: 'Usuario eliminado' });
+    await request().query(`
+      DELETE FROM notifications
+      WHERE userId = @id
+        OR actaId IN (SELECT id FROM actas WHERE solicitanteId = @id)
+    `);
+    await request().query(`
+      DELETE FROM acta_historial
+      WHERE actaId IN (SELECT id FROM actas WHERE solicitanteId = @id)
+    `);
+    await request().query(`
+      DELETE FROM acta_materiales
+      WHERE actaId IN (SELECT id FROM actas WHERE solicitanteId = @id)
+    `);
+    await request().query(`
+      DELETE FROM acta_aprobaciones
+      WHERE actaId IN (SELECT id FROM actas WHERE solicitanteId = @id)
+    `);
+    await request().query('DELETE FROM actas WHERE solicitanteId = @id');
+    await request().query('DELETE FROM users WHERE id = @id');
+
+    await transaction.commit();
+    transactionCompleted = true;
+    res.json({ message: 'Usuario y actas eliminados', deletedActaIds });
   } catch (error) {
+    if (transactionStarted && !transactionCompleted) {
+      try {
+        await transaction.rollback();
+      } catch (rollbackError) {
+        console.error('No se pudo revertir la eliminación del usuario:', rollbackError);
+      }
+    }
     res.status(500).json({ error: error.message });
   }
 }
